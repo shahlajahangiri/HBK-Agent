@@ -9,6 +9,8 @@ export function toScene(agent: any, videoRows: any[]) {
     showBotText: agent.show_bot_text,
     idleVideoIndex: agent.idle_video_index,
     slug: agent.slug,
+    voiceId: agent.voice_id ?? undefined,
+    voiceName: agent.voice_name ?? undefined,
     videos: videoRows.map((v) => ({
       index: v.video_order,
       url: v.file_path,
@@ -16,6 +18,7 @@ export function toScene(agent: any, videoRows: any[]) {
       description: v.description ?? undefined,
       includesSpeech: v.includes_speech,
       trigger: v.trigger ?? undefined,
+      muted: v.muted ?? false,
     })),
   };
 }

@@ -8,7 +8,7 @@ export async function GET() {
 
     const agent = agentResult.rows[0];
     const videosResult = await pool.query(
-      "SELECT video_order, label, description, file_path, trigger, includes_speech FROM videos WHERE agent_id = $1 ORDER BY video_order ASC",
+      "SELECT video_order, label, description, file_path, trigger, includes_speech, muted FROM videos WHERE agent_id = $1 ORDER BY video_order ASC",
       [agent.id]
     );
 

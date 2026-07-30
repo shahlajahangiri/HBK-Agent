@@ -3,9 +3,9 @@ import { NextRequest } from "next/server";
 export const runtime = "edge";
 
 export async function POST(req: NextRequest) {
-  const { text } = await req.json();
+  const { text, voiceId: voiceIdOverride } = await req.json();
 
-  const voiceId = process.env.ELEVENLABS_VOICE_ID;
+  const voiceId = voiceIdOverride || process.env.ELEVENLABS_VOICE_ID;
   const apiKey = process.env.ELEVENLABS_API_KEY;
 
   const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
