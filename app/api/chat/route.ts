@@ -26,6 +26,23 @@ When you ask this kind of permission question, end your reply with the exact mar
 If nothing is relevant, don't use the marker at all.`
     : "";
 
+  // Enforced in code, not in the editable knowledge prompt: Mira always answers in the
+  // visitor's language. The transcript text itself is the primary signal (its script
+  // rarely lies); Scribe's detected language is passed only as a confirming hint,
+  // since its guess can occasionally be wrong.
+  // Note: Scribe's detected-language hint proved unreliable here (accented English was
+  // confidently flagged as Swedish), so the message text alone decides the reply language.
+  const languageInstruction =
+    `\n\nIMPORTANT: Write your entire reply in the language the visitor's last message is written in — never in any other language, no matter what language these instructions or the knowledge above are written in.` +
+    `\nAlways write the school's name exactly as "HBK Saar" — never abbreviate, shorten, or alter it.` +
+    `\nThe visitor's message comes from speech recognition, which frequently garbles the name "HBK Saar" (seen as "HPK Czar", "K Saar", "HP Ksar", "HPK ZARP", "Kaserne", "کازار" and similar). If any word in the message plausibly sounds like it, silently treat it as "HBK Saar" — never ask what the garbled word means and never invent a different place.` +
+    `\nSpeech recognition also sometimes transcribes German speech as similar-sounding English. Most common: German "Wer ist …?" (Who is …?) becomes English "Where is …?". If the visitor asks "Where is" about a PERSON, they almost certainly asked "Wer ist" — answer who that person is, in German. Likewise names may be slightly off ("Schmidt" for "Schmitz").`;
+
+  // The model has no clock and its knowledge ends at its training cutoff — give it
+  // today's real date and tell it to be honest about anything more recent.
+  const today = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+  const dateInstruction = `\n\nToday's date is ${today}. Your training data ends earlier than this, so for events after your knowledge cutoff (elections, news, appointments), say you cannot know rather than guessing based on outdated information.`;
+
   const res = await fetch("https://api.mistral.ai/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -37,7 +54,7 @@ If nothing is relevant, don't use the marker at all.`
       stream: true,
       max_tokens: 80,
       messages: [
-        { role: "system", content: scene.systemPrompt + videoListPrompt },
+        { role: "system", content: scene.systemPrompt + videoListPrompt + languageInstruction + dateInstruction },
         ...messages,
       ],
     }),

@@ -50,6 +50,8 @@ export default function StagePage() {
   const audioChunksRef = useRef<Blob[]>([]);
   const vadAudioCtxRef = useRef<AudioContext | null>(null);
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // ISO language code Scribe detected in the visitor's last utterance (e.g. "eng", "deu", "fas")
+  const spokenLanguageRef = useRef<string | null>(null);
   // Synchronous guard — React's `phase` state doesn't update until recording actually starts,
   // leaving a gap where a fast double-tap could start two recording sessions at once.
   const listeningActiveRef = useRef(false);
@@ -85,7 +87,7 @@ export default function StagePage() {
       const res = await fetch("/api/tts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, voiceId: scene.voiceId }),
+        body: JSON.stringify({ text, voiceId: scene.voiceId, language: spokenLanguageRef.current }),
       });
       if (!res.ok) throw new Error("TTS failed");
       const arrayBuffer = await res.arrayBuffer();
@@ -120,7 +122,7 @@ export default function StagePage() {
     fetch("/api/tts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, voiceId: scene.voiceId }),
+      body: JSON.stringify({ text, voiceId: scene.voiceId, language: spokenLanguageRef.current }),
     }).then((r) => { if (!r.ok) throw new Error("TTS failed"); return r.arrayBuffer(); }), [scene.voiceId]);
 
   // play pre-fetched audio chunks back-to-back; falls back to speak() on error
@@ -197,7 +199,7 @@ export default function StagePage() {
     const res = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages: newMessages, model }),
+      body: JSON.stringify({ messages: newMessages, model, spokenLanguage: spokenLanguageRef.current }),
     });
     if (!res.body) { setPhase("idle"); return; }
 
@@ -270,8 +272,15 @@ export default function StagePage() {
     }
     resetInactivityTimer();
     const normalized = finalTranscript.trim()
+      // fuzzy family matcher: any HBK-ish letter cluster (hbk/hpk/hvk/hp/hb…) followed by
+      // a Saar-ish word (saar/czar/zaar/ksar/zarp…) — catches new mishearings automatically
+      .replace(/\b(h\.?\s?[bpv]\.?\s?[kgv]?\.?|hbk|hpk|hvk|hbv|hpv)[\s-]*(k?[csz]aa?r[bp]?\w*|czar\w*|tsar\w*|zar\w*|1000|100)\b/gi, "HBK Saar")
+      // "K Saar" alone (dropped leading letters)
+      .replace(/\bk[.\s]+(saar|zaar|czar|sar)\b/gi, "HBK Saar")
       // normalize HBK variations
-      .replace(/\b(hbc|hbg|hbo|hbk|h\.b\.k\.?|h b k|each be kay|aitch be kay|age b k|h be k|ha be ka|ha b k|ha be k|habeka|habek|habitazar|habita\s*zar|habitat\s*zar|habitasar|abitazar|hepatazar|habeka\s*zar|hbke|hbca|hbga|hebek|hibek|the school|this school|the university|this university|the college|this place)(\s+saar)?\b/gi, "HBK Saar")
+      .replace(/\b(hbc|hbg|hbo|hbk|hvk|hbv|h\.b\.k\.?|h b k|each be kay|aitch be kay|age b k|h be k|ha be ka|ha b k|ha be k|habeka|habek|habitazar|habita\s*zar|habitat\s*zar|habitasar|abitazar|hepatazar|habeka\s*zar|hbke|hbca|hbga|hebek|hibek|hp\s*1000|hp\s*100|hb\s*1000|hp\s*ksar|hb\s*ksar|ksar|the school|this school|the university|this university|the college|this place)(\s+(saar|zaar|czar|tsar|sar))?\b/gi, "HBK Saar")
+      // Persian-script mishearings of "HBK Saar"
+      .replace(/(ها\s*به\s*کازار|کازار|اچ\s*بی\s*کی|هاش\s*بی\s*کا|اچ\s*پی\s*(هزار|۱۰۰۰|1000))(\s*(زار|سار|ثار))?/g, "HBK Saar")
       // normalize Saarbrücken variations
       .replace(/\b(zaar\s*br[uü]?c?k?e?n?|zaar\s*bguken|zaar\s*brook|saar\s*br[uü]?c?k?e?n?|sar\s*brook|zarbrook|saarbrucken|saarbrücken)\b/gi, "Saarbrücken")
       // normalize standalone Saar variations
@@ -303,7 +312,15 @@ export default function StagePage() {
 
     let stream: MediaStream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // cleaner input = noticeably better transcription, especially for German
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          channelCount: 1,
+        },
+      });
     } catch {
       listeningActiveRef.current = false;
       alert("Microphone access is required.");
@@ -312,7 +329,13 @@ export default function StagePage() {
 
     mediaStreamRef.current = stream;
     audioChunksRef.current = [];
-    const recorder = new MediaRecorder(stream);
+    const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+      ? "audio/webm;codecs=opus"
+      : undefined;
+    const recorder = new MediaRecorder(stream, {
+      ...(mimeType ? { mimeType } : {}),
+      audioBitsPerSecond: 128000,
+    });
     mediaRecorderRef.current = recorder;
 
     recorder.ondataavailable = (e) => {
@@ -335,6 +358,13 @@ export default function StagePage() {
         const data = await res.json();
         const text: string = (data.text ?? "").trim();
         if (text) {
+          // remember what language Scribe detected so Mira replies in the same one —
+          // but only when Scribe is confident; a wrong guess (e.g. Turkish for Persian)
+          // would otherwise force replies into the wrong language
+          spokenLanguageRef.current =
+            data.languageCode && (data.languageProbability ?? 0) >= 0.85
+              ? data.languageCode
+              : null;
           setTranscript(text);
           finalizeRecording(text);
         } else {

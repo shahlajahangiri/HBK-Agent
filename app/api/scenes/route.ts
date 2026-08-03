@@ -23,16 +23,30 @@ export async function POST(req: NextRequest) {
   try {
     await client.query("BEGIN");
 
-    const agentResult = await client.query(
-      `INSERT INTO agent (name, character_name, system_prompt, idle_message, selection_prompt, orientation, show_bot_text, idle_video_index, slug, voice_id, voice_name, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, now())
-       ON CONFLICT (slug) DO UPDATE SET
-         name = $1, character_name = $2, system_prompt = $3, idle_message = $4,
-         selection_prompt = $5, orientation = $6, show_bot_text = $7, idle_video_index = $8,
-         voice_id = $10, voice_name = $11, updated_at = now()
-       RETURNING id, slug`,
-      [name, characterName, systemPrompt, idleMessage, selectionPrompt, orientation, showBotText, idleVideoIndex, slug, voiceId ?? null, voiceName ?? null]
-    );
+    // Only one agent is ever allowed to exist. Renaming the scene must never create
+    // a second row — always update whichever single row already exists, if any.
+    const existing = await client.query("SELECT id FROM agent ORDER BY updated_at DESC LIMIT 1");
+
+    let agentResult;
+    if (existing.rows.length > 0) {
+      const agentId = existing.rows[0].id;
+      agentResult = await client.query(
+        `UPDATE agent SET
+           name = $1, character_name = $2, system_prompt = $3, idle_message = $4,
+           selection_prompt = $5, orientation = $6, show_bot_text = $7, idle_video_index = $8,
+           slug = $9, voice_id = $10, voice_name = $11, updated_at = now()
+         WHERE id = $12
+         RETURNING id, slug`,
+        [name, characterName, systemPrompt, idleMessage, selectionPrompt, orientation, showBotText, idleVideoIndex, slug, voiceId ?? null, voiceName ?? null, agentId]
+      );
+    } else {
+      agentResult = await client.query(
+        `INSERT INTO agent (name, character_name, system_prompt, idle_message, selection_prompt, orientation, show_bot_text, idle_video_index, slug, voice_id, voice_name, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, now())
+         RETURNING id, slug`,
+        [name, characterName, systemPrompt, idleMessage, selectionPrompt, orientation, showBotText, idleVideoIndex, slug, voiceId ?? null, voiceName ?? null]
+      );
+    }
 
     const agentId = agentResult.rows[0].id;
 
