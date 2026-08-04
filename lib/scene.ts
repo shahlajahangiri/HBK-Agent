@@ -7,6 +7,8 @@ export interface VideoClip {
   includesSpeech?: boolean;
   /** "entering" plays once when conversation starts, "leaving" plays on bye/timeout */
   trigger?: "entering" | "leaving";
+  /** If true, this clip always plays muted regardless of the visitor's global sound toggle */
+  muted?: boolean;
 }
 
 export interface Scene {
@@ -20,6 +22,9 @@ export interface Scene {
   showBotText: boolean;
   idleVideoIndex: number;
   slug?: string;
+  /** ElevenLabs voice — falls back to ELEVENLABS_VOICE_ID env var if unset */
+  voiceId?: string;
+  voiceName?: string;
 }
 
 export const scene: Scene = {
@@ -30,11 +35,10 @@ export const scene: Scene = {
   idleMessage: "Hi! I'm Mira. Ask me anything about HBK Saar.",
 
   systemPrompt: `You are Mira, a friendly guide at HBK Saar (Hochschule der Bildenden Künste Saar) — the art and design college in Saarbrücken, Germany.
-You help visitors, prospective students, and current students — especially Media Informatics students — learn about HBK Saar.
+You help visitors, prospective students, and current students — especially Media Informatics students — learn about HBK Saar. You are also a knowledgeable, general-purpose assistant — feel free to answer questions on any topic the visitor asks about, not only HBK Saar.
 Keep every reply to ONE or TWO short sentences maximum — this is a voice conversation, brevity is essential.
 Never use lists or bullet points. Be warm and helpful.
-Only answer questions related to HBK Saar. If someone asks about something completely unrelated, politely redirect them.
-If you don't know something specific, say "I'm not sure about that — you can ask at the HBK Saar front desk or check hbksaar.de."
+Always reply in the same language the visitor used, whatever it is. If unsure, default to English.
 IMPORTANT: This is a voice app so speech recognition may mishear words. Always interpret the following as "HBK Saar": "HBC", "HBG", "HBO", "HBK", "H B K", "ha be ka", "habeka", "each be kay", "aitch be kay", "the school", "this school", "the university", "this place", "the college".
 Always interpret the following as "Saarbrücken": "zaar brucken", "zaar bguken", "zaar brook", "sar brook", "zarbrook".
 Always interpret "zaar", "czar", "tsar", "za ar" as "Saar".

@@ -45,9 +45,15 @@ export default function StagePage() {
     return () => window.removeEventListener("resize", update);
   }, [scene.orientation]);
 
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
-  // Synchronous guard — React's `phase` state doesn't update until rec.onstart fires,
-  // leaving a gap where a fast double-tap can start two recognition sessions at once.
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const vadAudioCtxRef = useRef<AudioContext | null>(null);
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // ISO language code Scribe detected in the visitor's last utterance (e.g. "eng", "deu", "fas")
+  const spokenLanguageRef = useRef<string | null>(null);
+  // Synchronous guard — React's `phase` state doesn't update until recording actually starts,
+  // leaving a gap where a fast double-tap could start two recording sessions at once.
   const listeningActiveRef = useRef(false);
   const synthRef = useRef<SpeechSynthesis | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -56,7 +62,9 @@ export default function StagePage() {
   useEffect(() => {
     fetch("/api/scenes/latest")
       .then((r) => (r.ok ? r.json() : null))
-      .then((data) => { if (data) setScene({ ...defaultScene, ...data }); })
+      .then((data) => {
+        if (data) setScene({ ...defaultScene, ...data });
+      })
       .catch(() => {});
   }, []);
 
@@ -79,7 +87,7 @@ export default function StagePage() {
       const res = await fetch("/api/tts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text, voiceId: scene.voiceId, language: spokenLanguageRef.current }),
       });
       if (!res.ok) throw new Error("TTS failed");
       const arrayBuffer = await res.arrayBuffer();
@@ -108,14 +116,14 @@ export default function StagePage() {
       utt.onerror = () => { setPhase("idle"); };
       synth.speak(utt);
     }
-  }, [scene.idleVideoIndex, scene.videos.length]);
+  }, [scene.idleVideoIndex, scene.videos.length, scene.voiceId]);
 
   const ttsFetch = useCallback((text: string) =>
     fetch("/api/tts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text }),
-    }).then((r) => { if (!r.ok) throw new Error("TTS failed"); return r.arrayBuffer(); }), []);
+      body: JSON.stringify({ text, voiceId: scene.voiceId, language: spokenLanguageRef.current }),
+    }).then((r) => { if (!r.ok) throw new Error("TTS failed"); return r.arrayBuffer(); }), [scene.voiceId]);
 
   // play pre-fetched audio chunks back-to-back; falls back to speak() on error
   const speakChunks = useCallback(async (chunkPromises: Promise<ArrayBuffer>[], fullText: string) => {
@@ -191,7 +199,7 @@ export default function StagePage() {
     const res = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages: newMessages, model }),
+      body: JSON.stringify({ messages: newMessages, model, spokenLanguage: spokenLanguageRef.current }),
     });
     if (!res.body) { setPhase("idle"); return; }
 
@@ -248,27 +256,47 @@ export default function StagePage() {
 
   const finalizeRecording = useCallback((finalTranscript: string) => {
     if (!finalTranscript.trim()) { setPhase("idle"); return; }
-    if (/\b(bye|goodbye|see you|farewell|ciao)\b/i.test(finalTranscript)) {
+    if (/\b(bye|goodbye|see you|farewell|ciao|tsch[üu]ss|auf wiedersehen|bis bald)\b/i.test(finalTranscript)) {
       triggerLeaving(); return;
     }
-    if (/^(hi+|hello|hey|howdy|greetings|hi there|hello there|hey there|good morning|good afternoon|good evening)[\s!.]*$/i.test(finalTranscript.trim())) {
+    const isEnglishGreeting = /^(hi+|hello|hey|howdy|greetings|hi there|hello there|hey there|good morning|good afternoon|good evening)[\s!.]*$/i.test(finalTranscript.trim());
+    const isGermanGreeting = /^(hallo|guten tag|guten morgen|guten abend|servus|moin|gr[üu]ezi)[\s!.]*$/i.test(finalTranscript.trim());
+    if (isEnglishGreeting || isGermanGreeting) {
+      const greeting = isGermanGreeting
+        ? "Hallo! Ich bin Mira, deine Führung an der HBK Saar. Frag mich gerne alles über die Schule oder ihre Studiengänge!"
+        : "Hi there! I'm Mira, your guide at HBK Saar. Feel free to ask me anything about the school or its programs!";
       setPhase("speaking");
-      setReply("Hi there! I'm Mira, your guide at HBK Saar. Feel free to ask me anything about the school or its programs!");
-      speak("Hi there! I'm Mira, your guide at HBK Saar. Feel free to ask me anything about the school or its programs!");
+      setReply(greeting);
+      speak(greeting);
       return;
     }
     resetInactivityTimer();
     const normalized = finalTranscript.trim()
+      // fuzzy family matcher: any HBK-ish letter cluster (hbk/hpk/hvk/hp/hb…) followed by
+      // a Saar-ish word (saar/czar/zaar/ksar/zarp…) — catches new mishearings automatically
+      .replace(/\b(h\.?\s?[bpv]\.?\s?[kgv]?\.?|hbk|hpk|hvk|hbv|hpv)[\s-]*(k?[csz]aa?r[bp]?\w*|czar\w*|tsar\w*|zar\w*|1000|100)\b/gi, "HBK Saar")
+      // "K Saar" alone (dropped leading letters)
+      .replace(/\bk[.\s]+(saar|zaar|czar|sar)\b/gi, "HBK Saar")
       // normalize HBK variations
-      .replace(/\b(hbc|hbg|hbo|hbk|h\.b\.k\.?|h b k|each be kay|aitch be kay|age b k|h be k|ha be ka|ha b k|ha be k|habeka|habek|habitazar|habita\s*zar|habitat\s*zar|habitasar|abitazar|hepatazar|habeka\s*zar|hbke|hbca|hbga|hebek|hibek|the school|this school|the university|this university|the college|this place)(\s+saar)?\b/gi, "HBK Saar")
+      .replace(/\b(hbc|hbg|hbo|hbk|hvk|hbv|h\.b\.k\.?|h b k|each be kay|aitch be kay|age b k|h be k|ha be ka|ha b k|ha be k|habeka|habek|habitazar|habita\s*zar|habitat\s*zar|habitasar|abitazar|hepatazar|habeka\s*zar|hbke|hbca|hbga|hebek|hibek|hp\s*1000|hp\s*100|hb\s*1000|hp\s*ksar|hb\s*ksar|ksar|the school|this school|the university|this university|the college|this place)(\s+(saar|zaar|czar|tsar|sar))?\b/gi, "HBK Saar")
+      // Persian-script mishearings of "HBK Saar"
+      .replace(/(ها\s*به\s*کازار|کازار|اچ\s*بی\s*کی|هاش\s*بی\s*کا|اچ\s*پی\s*(هزار|۱۰۰۰|1000))(\s*(زار|سار|ثار))?/g, "HBK Saar")
       // normalize Saarbrücken variations
       .replace(/\b(zaar\s*br[uü]?c?k?e?n?|zaar\s*bguken|zaar\s*brook|saar\s*br[uü]?c?k?e?n?|sar\s*brook|zarbrook|saarbrucken|saarbrücken)\b/gi, "Saarbrücken")
       // normalize standalone Saar variations
       .replace(/\b(zaar|czar|tsar|sahar|za ar)\b/gi, "Saar");
     sendMessage(normalized);
-  }, [sendMessage, resetInactivityTimer, triggerLeaving]);
+  }, [sendMessage, resetInactivityTimer, triggerLeaving, speak]);
 
-  const startListening = useCallback(() => {
+  const stopListening = useCallback(() => {
+    if (!listeningActiveRef.current) return;
+    listeningActiveRef.current = false;
+    if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null; }
+    t.current.listenEnd = performance.now();
+    mediaRecorderRef.current?.stop();
+  }, []);
+
+  const startListening = useCallback(async () => {
     if (listeningActiveRef.current) return;
     listeningActiveRef.current = true;
 
@@ -282,70 +310,110 @@ export default function StagePage() {
       resetInactivityTimer();
     }
 
-    const SR =
-      (window as typeof window & { webkitSpeechRecognition?: typeof SpeechRecognition }).webkitSpeechRecognition ??
-      (typeof SpeechRecognition !== "undefined" ? SpeechRecognition : null);
-    if (!SR) { listeningActiveRef.current = false; alert("Use Chrome for speech recognition."); return; }
-
-    const rec = new SR();
-    rec.lang = "en-US";
-    rec.interimResults = true;
-    rec.continuous = true;
-    rec.maxAlternatives = 1;
-
-    let silenceTimer: ReturnType<typeof setTimeout> | null = null;
-    let collected = "";
-    let lastInterim = "";
-    let sent = false;
-
-    const sendOnce = (text: string) => {
-      if (sent || !text.trim()) return;
-      sent = true;
-      if (silenceTimer) clearTimeout(silenceTimer);
-      rec.abort();
-      t.current.listenEnd = performance.now();
-      finalizeRecording(text);
-    };
-
-    rec.onstart = () => { setPhase("listening"); setTranscript(""); t.current.listenStart = performance.now(); };
-
-    rec.onresult = (e: SpeechRecognitionEvent) => {
-      let interim = "";
-      collected = "";
-      for (let i = 0; i < e.results.length; i++) {
-        if (e.results[i].isFinal) collected += e.results[i][0].transcript + " ";
-        else interim += e.results[i][0].transcript;
-      }
-      lastInterim = interim;
-      setTranscript((collected + interim).trim());
-      if (silenceTimer) clearTimeout(silenceTimer);
-      silenceTimer = setTimeout(() => sendOnce(collected + interim), 4000);
-    };
-
-    rec.onend = () => {
+    let stream: MediaStream;
+    try {
+      // cleaner input = noticeably better transcription, especially for German
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          channelCount: 1,
+        },
+      });
+    } catch {
       listeningActiveRef.current = false;
-      if (silenceTimer) clearTimeout(silenceTimer);
-      // use interim too — single words often never become "final" before onend fires
-      const best = (collected + lastInterim).trim();
-      if (!sent && best) sendOnce(best);
-      else if (!sent) setPhase("idle");
+      alert("Microphone access is required.");
+      return;
+    }
+
+    mediaStreamRef.current = stream;
+    audioChunksRef.current = [];
+    const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+      ? "audio/webm;codecs=opus"
+      : undefined;
+    const recorder = new MediaRecorder(stream, {
+      ...(mimeType ? { mimeType } : {}),
+      audioBitsPerSecond: 128000,
+    });
+    mediaRecorderRef.current = recorder;
+
+    recorder.ondataavailable = (e) => {
+      if (e.data.size > 0) audioChunksRef.current.push(e.data);
     };
 
-    rec.onerror = (e: Event & { error?: string }) => {
-      if (silenceTimer) clearTimeout(silenceTimer);
-      if (e.error !== "aborted") setPhase("idle");
+    recorder.onstop = async () => {
+      stream.getTracks().forEach((tr) => tr.stop());
+      vadAudioCtxRef.current?.close().catch(() => {});
+      vadAudioCtxRef.current = null;
+
+      const blob = new Blob(audioChunksRef.current, { type: recorder.mimeType || "audio/webm" });
+      if (blob.size < 2000) { setPhase("idle"); return; } // essentially silence, nothing said
+
+      setPhase("thinking");
+      try {
+        const fd = new FormData();
+        fd.append("audio", blob, "audio.webm");
+        const res = await fetch("/api/stt", { method: "POST", body: fd });
+        const data = await res.json();
+        const text: string = (data.text ?? "").trim();
+        if (text) {
+          // remember what language Scribe detected so Mira replies in the same one —
+          // but only when Scribe is confident; a wrong guess (e.g. Turkish for Persian)
+          // would otherwise force replies into the wrong language
+          spokenLanguageRef.current =
+            data.languageCode && (data.languageProbability ?? 0) >= 0.85
+              ? data.languageCode
+              : null;
+          setTranscript(text);
+          finalizeRecording(text);
+        } else {
+          setPhase("idle");
+        }
+      } catch {
+        setPhase("idle");
+      }
     };
 
-    recognitionRef.current = rec;
-    rec.start();
-  }, [sendMessage, conversationStarted, scene.videos, scene.idleVideoIndex, resetInactivityTimer, triggerLeaving, finalizeRecording]);
+    recorder.start();
+    setPhase("listening");
+    setTranscript("");
+    t.current.listenStart = performance.now();
 
-  const stopListening = useCallback(() => {
-    const rec = recognitionRef.current;
-    if (!rec) return;
-    rec.abort();
-    t.current.listenEnd = performance.now();
-  }, []);
+    // Auto-stop after a pause in speech, using live volume analysis
+    // (Scribe transcribes a finished clip, so there's no native "onresult" silence signal).
+    const audioCtx = new AudioContext();
+    vadAudioCtxRef.current = audioCtx;
+    const source = audioCtx.createMediaStreamSource(stream);
+    const analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 2048;
+    source.connect(analyser);
+    const levelData = new Uint8Array(analyser.frequencyBinCount);
+
+    const SILENCE_RMS_THRESHOLD = 8;
+    const SILENCE_MS = 4000;
+    let hasSpoken = false;
+
+    const checkLevel = () => {
+      if (!listeningActiveRef.current) return;
+      analyser.getByteTimeDomainData(levelData);
+      let sumSquares = 0;
+      for (let i = 0; i < levelData.length; i++) {
+        const v = levelData[i] - 128;
+        sumSquares += v * v;
+      }
+      const rms = Math.sqrt(sumSquares / levelData.length);
+
+      if (rms > SILENCE_RMS_THRESHOLD) {
+        hasSpoken = true;
+        if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null; }
+      } else if (hasSpoken && !silenceTimerRef.current) {
+        silenceTimerRef.current = setTimeout(() => stopListening(), SILENCE_MS);
+      }
+      requestAnimationFrame(checkLevel);
+    };
+    requestAnimationFrame(checkLevel);
+  }, [conversationStarted, scene.videos, scene.idleVideoIndex, resetInactivityTimer, finalizeRecording, stopListening]);
 
   const videoMutedRef = useRef(true);
   videoMutedRef.current = videoMuted;
@@ -356,15 +424,17 @@ export default function StagePage() {
     const el = videoRef.current;
     if (el && clip?.url) {
       el.src = clip.url;
-      el.muted = videoMutedRef.current;
+      el.muted = clip.muted || videoMutedRef.current;
       el.play().catch(() => {});
     }
   }, [videoIndex, scene.videos]);
 
-  // mute/unmute the running player without reloading it
+  // mute/unmute the running player without reloading it — a clip marked
+  // muted by the creator always stays muted regardless of the visitor toggle
   useEffect(() => {
-    if (videoRef.current) videoRef.current.muted = videoMuted;
-  }, [videoMuted]);
+    const clip = scene.videos.find((v) => v.index === videoIndex);
+    if (videoRef.current) videoRef.current.muted = !!clip?.muted || videoMuted;
+  }, [videoMuted, videoIndex, scene.videos]);
 
   const toggleVoiceMute = useCallback(() => {
     const next = !voiceMutedRef.current;

@@ -32,7 +32,7 @@ function Field({
 }) {
   return (
     <div className="flex flex-col gap-2">
-      <label className="text-xs font-semibold text-slate-400 uppercase tracking-widest">
+      <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest">
         {label}
       </label>
       {children}
@@ -45,7 +45,7 @@ function Input({ ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
       {...props}
-      className="bg-slate-800/60 border border-slate-700/60 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-500/60 focus:bg-slate-800 w-full transition-colors"
+      className="bg-slate-100 border border-slate-300 rounded-xl px-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500/60 focus:bg-slate-100 w-full transition-colors"
     />
   );
 }
@@ -56,7 +56,7 @@ function Textarea({
   return (
     <textarea
       {...props}
-      className="bg-slate-800/60 border border-slate-700/60 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-500/60 focus:bg-slate-800 w-full resize-none transition-colors leading-relaxed"
+      className="bg-slate-100 border border-slate-300 rounded-xl px-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500/60 focus:bg-slate-100 w-full resize-none transition-colors leading-relaxed"
     />
   );
 }
@@ -78,13 +78,13 @@ function Toggle({
       aria-checked={checked}
     >
       <div
-        className={`relative w-11 h-6 rounded-full transition-colors duration-200 ${checked ? "bg-indigo-500" : "bg-slate-700"}`}
+        className={`relative w-11 h-6 rounded-full transition-colors duration-200 ${checked ? "bg-indigo-500" : "bg-slate-200"}`}
       >
         <div
           className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-all duration-200 ${checked ? "left-6" : "left-1"}`}
         />
       </div>
-      <span className="text-sm text-slate-300 group-hover:text-white transition-colors">
+      <span className="text-sm text-slate-700 group-hover:text-slate-900 transition-colors">
         {label}
       </span>
     </button>
@@ -113,15 +113,15 @@ function NavItem({
       onClick={onClick}
       className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 group ${
         active
-          ? "bg-indigo-500/15 text-indigo-300 border border-indigo-500/20"
-          : "text-slate-400 hover:text-white hover:bg-slate-800/60"
+          ? "bg-indigo-500/15 text-indigo-600 border border-indigo-500/20"
+          : "text-slate-500 hover:text-slate-900 hover:bg-slate-200"
       }`}
     >
       <span
         className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
           active
-            ? "bg-indigo-500/20 text-indigo-400"
-            : "bg-slate-800 text-slate-500 group-hover:bg-slate-700 group-hover:text-slate-300"
+            ? "bg-indigo-500/20 text-indigo-600"
+            : "bg-slate-100 text-slate-500 group-hover:bg-slate-300 group-hover:text-slate-900"
         }`}
       >
         {icon}
@@ -129,7 +129,7 @@ function NavItem({
       <span className="flex-1 text-left">{label}</span>
       {done && (
         <svg
-          className="w-4 h-4 text-emerald-400 shrink-0"
+          className="w-4 h-4 text-emerald-600 shrink-0"
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
@@ -158,9 +158,9 @@ function SectionCard({
   children: React.ReactNode;
 }) {
   return (
-    <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-6 flex flex-col gap-6">
+    <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 flex flex-col gap-6">
       <div>
-        <h2 className="text-lg font-semibold text-white">{title}</h2>
+        <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
         <p className="text-sm text-slate-500 mt-0.5">{subtitle}</p>
       </div>
       {children}
@@ -189,8 +189,12 @@ function SectionScene({
 
       <Field
         label="Knowledge & system prompt"
-        hint="Describe who the character is, what they know, and how they speak. Keep replies short — this is a voice conversation."
+        hint="Upload a .txt file to fill this in, then fine-tune by typing below if needed. Uploading again will ask before replacing what's here. Keep replies short — this is a voice conversation."
       >
+        <TxtUploadZone
+          currentValue={scene.systemPrompt}
+          onLoaded={(text) => onChange({ ...scene, systemPrompt: text })}
+        />
         <Textarea
           rows={6}
           value={scene.systemPrompt}
@@ -210,7 +214,7 @@ function SectionScene({
         />
       </Field>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Field label="Display orientation">
           <div className="flex gap-2">
             {(["portrait", "landscape", "auto"] as const).map((mode) => (
@@ -219,8 +223,8 @@ function SectionScene({
                 onClick={() => onChange({ ...scene, orientation: mode })}
                 className={`flex-1 flex flex-col items-center gap-1.5 py-3 rounded-xl border text-xs font-medium transition-all ${
                   scene.orientation === mode
-                    ? "bg-indigo-500/15 border-indigo-500/40 text-indigo-300"
-                    : "bg-slate-800/60 border-slate-700/60 text-slate-400 hover:border-slate-600"
+                    ? "bg-indigo-500/15 border-indigo-500/40 text-indigo-600"
+                    : "bg-slate-100 border-slate-300 text-slate-500 hover:border-slate-400"
                 }`}
               >
                 <span className="text-lg">
@@ -264,17 +268,290 @@ function SectionCharacter({
   onChange: (s: Scene) => void;
 }) {
   return (
-    <SectionCard title="Character" subtitle="Name and video selection logic.">
-      <Field label="Character name">
-        <Input
-          value={scene.characterName}
-          onChange={(e) =>
-            onChange({ ...scene, characterName: e.target.value })
-          }
-          placeholder="Mira"
+    <div className="flex flex-col gap-4">
+      <SectionCard title="Character" subtitle="Name and video selection logic.">
+        <Field label="Character name">
+          <Input
+            value={scene.characterName}
+            onChange={(e) =>
+              onChange({ ...scene, characterName: e.target.value })
+            }
+            placeholder="Mira"
+          />
+        </Field>
+      </SectionCard>
+
+      <VoicePicker scene={scene} onChange={onChange} />
+    </div>
+  );
+}
+
+// ─── Voice picker (ElevenLabs Voice Library) ──────────────────────────────────
+
+interface RemoteVoice {
+  voiceId: string;
+  name: string;
+  gender: string;
+  accent: string;
+  language: string;
+  description: string;
+  previewUrl: string;
+}
+
+function VoicePicker({
+  scene,
+  onChange,
+}: {
+  scene: Scene;
+  onChange: (s: Scene) => void;
+}) {
+  const [search, setSearch] = useState("");
+  const [gender, setGender] = useState("any");
+  const [accent, setAccent] = useState("any");
+  const [language, setLanguage] = useState("any");
+  const [voices, setVoices] = useState<RemoteVoice[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [playingId, setPlayingId] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  const fetchVoices = useCallback(() => {
+    setLoading(true);
+    setError(null);
+    const params = new URLSearchParams();
+    if (search) params.set("search", search);
+    if (gender !== "any") params.set("gender", gender);
+    if (accent !== "any") params.set("accent", accent);
+    if (language !== "any") params.set("language", language);
+
+    fetch(`/api/voices?${params}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.error) throw new Error(data.error);
+        setVoices(data.voices ?? []);
+      })
+      .catch(() => setError("Could not load voices from ElevenLabs."))
+      .finally(() => setLoading(false));
+  }, [search, gender, accent, language]);
+
+  useEffect(() => {
+    const t = setTimeout(fetchVoices, 400);
+    return () => clearTimeout(t);
+  }, [fetchVoices]);
+
+  const playPreview = (voice: RemoteVoice) => {
+    audioRef.current?.pause();
+    if (playingId === voice.voiceId) {
+      setPlayingId(null);
+      return;
+    }
+    if (!voice.previewUrl) return;
+    const audio = new Audio(voice.previewUrl);
+    audioRef.current = audio;
+    audio.play();
+    setPlayingId(voice.voiceId);
+    audio.onended = () => setPlayingId(null);
+  };
+
+  const selectVoice = (voice: RemoteVoice) => {
+    onChange({ ...scene, voiceId: voice.voiceId, voiceName: voice.name });
+  };
+
+  return (
+    <SectionCard
+      title="Voice"
+      subtitle="Choose from ElevenLabs' full voice library — any gender, accent, or language."
+    >
+      {scene.voiceName && (
+        <div className="flex items-center justify-between bg-indigo-500/10 border border-indigo-500/30 rounded-xl px-4 py-3">
+          <div>
+            <p className="text-xs text-indigo-600 mb-0.5">Current voice</p>
+            <p className="text-sm text-slate-900 font-medium">{scene.voiceName}</p>
+          </div>
+          <button
+            onClick={() => onChange({ ...scene, voiceId: undefined, voiceName: undefined })}
+            className="text-xs text-slate-500 hover:text-slate-900 transition-colors"
+          >
+            Reset to default
+          </button>
+        </div>
+      )}
+
+      <div className="flex flex-col gap-2">
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search voices by name or description…"
+          className="w-full text-sm text-slate-900 bg-slate-100 border border-slate-300 rounded-xl px-4 py-3 outline-none focus:border-indigo-500"
         />
-      </Field>
+        <div className="flex flex-col sm:flex-row gap-2">
+          <select
+            value={gender}
+            onChange={(e) => setGender(e.target.value)}
+            className="flex-1 text-sm text-slate-900 bg-slate-100 border border-slate-300 rounded-xl px-3 py-2 outline-none focus:border-indigo-500"
+          >
+            <option value="any">Any gender</option>
+            <option value="female">Female</option>
+            <option value="male">Male</option>
+            <option value="neutral">Neutral</option>
+          </select>
+          <select
+            value={accent}
+            onChange={(e) => setAccent(e.target.value)}
+            className="flex-1 text-sm text-slate-900 bg-slate-100 border border-slate-300 rounded-xl px-3 py-2 outline-none focus:border-indigo-500"
+          >
+            <option value="any">Any accent</option>
+            <option value="american">American</option>
+            <option value="british">British</option>
+            <option value="german">German</option>
+            <option value="australian">Australian</option>
+            <option value="indian">Indian</option>
+            <option value="african">African</option>
+          </select>
+          <select
+            value={language}
+            onChange={(e) => setLanguage(e.target.value)}
+            className="flex-1 text-sm text-slate-900 bg-slate-100 border border-slate-300 rounded-xl px-3 py-2 outline-none focus:border-indigo-500"
+          >
+            <option value="any">Any language</option>
+            <option value="en">English</option>
+            <option value="de">German</option>
+          </select>
+        </div>
+      </div>
+
+      {loading && <p className="text-xs text-slate-500">Loading voices…</p>}
+      {error && <p className="text-xs text-red-600">{error}</p>}
+
+      <div className="grid grid-cols-1 gap-2 max-h-96 overflow-y-auto">
+        {voices.map((v) => (
+          <div
+            key={v.voiceId}
+            className={`flex items-center justify-between gap-3 rounded-xl px-4 py-3 border transition-colors ${
+              scene.voiceId === v.voiceId
+                ? "border-indigo-500 bg-indigo-500/10"
+                : "border-slate-300 bg-slate-50"
+            }`}
+          >
+            <div className="min-w-0">
+              <p className="text-sm text-slate-900 font-medium truncate">{v.name}</p>
+              <p className="text-xs text-slate-500 truncate">
+                {v.gender} · {v.accent} · {v.language}
+              </p>
+            </div>
+            <div className="flex gap-2 shrink-0">
+              <button
+                onClick={() => playPreview(v)}
+                disabled={!v.previewUrl}
+                className="w-9 h-9 rounded-full bg-slate-100 border border-slate-300 hover:border-slate-400 flex items-center justify-center text-slate-700 hover:text-slate-900 disabled:opacity-30 transition-colors"
+                aria-label="Preview voice"
+              >
+                {playingId === v.voiceId ? "⏸" : "▶"}
+              </button>
+              <button
+                onClick={() => selectVoice(v)}
+                className={`px-3 py-2 rounded-xl text-xs font-medium transition-colors ${
+                  scene.voiceId === v.voiceId
+                    ? "bg-indigo-500 text-white"
+                    : "bg-slate-100 border border-slate-300 text-slate-700 hover:text-slate-900 hover:border-slate-400"
+                }`}
+              >
+                {scene.voiceId === v.voiceId ? "Selected" : "Select"}
+              </button>
+            </div>
+          </div>
+        ))}
+        {!loading && voices.length === 0 && !error && (
+          <p className="text-xs text-slate-500">No voices found. Try a different search or filter.</p>
+        )}
+      </div>
     </SectionCard>
+  );
+}
+
+// ─── Video upload zone ────────────────────────────────────────────────────────
+
+// ─── Knowledge/system-prompt .txt upload zone ─────────────────────────────────
+
+function TxtUploadZone({
+  currentValue,
+  onLoaded,
+}: {
+  currentValue: string;
+  onLoaded: (text: string) => void;
+}) {
+  const [dragOver, setDragOver] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [loadedName, setLoadedName] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const load = useCallback(
+    async (file: File) => {
+      if (!file.name.toLowerCase().endsWith(".txt")) {
+        setError("Only .txt files are supported");
+        return;
+      }
+      // Uploading replaces the whole field — warn before wiping out existing content
+      // (typed manually or from a previous upload) instead of silently overwriting it.
+      if (currentValue.trim()) {
+        const confirmed = window.confirm(
+          "This will replace the current text below with the uploaded file's content. Continue?",
+        );
+        if (!confirmed) return;
+      }
+      setError(null);
+      try {
+        const text = await file.text();
+        onLoaded(text);
+        setLoadedName(file.name);
+      } catch {
+        setError("Could not read that file");
+      }
+    },
+    [onLoaded, currentValue],
+  );
+
+  const onDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setDragOver(false);
+      const file = e.dataTransfer.files[0];
+      if (file) load(file);
+    },
+    [load],
+  );
+
+  return (
+    <div
+      onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={onDrop}
+      onClick={() => inputRef.current?.click()}
+      className={`cursor-pointer rounded-xl border-2 border-dashed px-4 py-3 text-center transition-all duration-200 ${
+        dragOver
+          ? "border-indigo-400/60 bg-indigo-500/10 scale-[1.01]"
+          : "border-slate-300 hover:border-slate-400 hover:bg-slate-100"
+      }`}
+    >
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".txt,text/plain"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) load(f);
+        }}
+      />
+      <p className="text-xs text-slate-500">
+        {loadedName ? (
+          <>Loaded <span className="text-slate-900 font-medium">{loadedName}</span> — drop another .txt to replace</>
+        ) : (
+          "Drop a .txt file here or click to browse"
+        )}
+      </p>
+      {error && <p className="text-xs text-red-600 mt-1">{error}</p>}
+    </div>
   );
 }
 
@@ -353,7 +630,7 @@ function VideoUploadZone({
       className={`cursor-pointer rounded-xl border-2 border-dashed p-5 text-center transition-all duration-200 ${
         dragOver
           ? "border-indigo-400/60 bg-indigo-500/10 scale-[1.01]"
-          : "border-slate-700/60 hover:border-slate-600 hover:bg-slate-800/40"
+          : "border-slate-300 hover:border-slate-400 hover:bg-slate-100"
       }`}
     >
       <input
@@ -369,8 +646,8 @@ function VideoUploadZone({
 
       {uploading ? (
         <div className="flex flex-col items-center gap-2">
-          <p className="text-xs text-slate-400">Uploading…</p>
-          <div className="w-full bg-slate-700 rounded-full h-1.5">
+          <p className="text-xs text-slate-500">Uploading…</p>
+          <div className="w-full bg-slate-200 rounded-full h-1.5">
             <div
               className="bg-indigo-500 h-1.5 rounded-full transition-all duration-300"
               style={{ width: `${progress}%` }}
@@ -379,9 +656,9 @@ function VideoUploadZone({
         </div>
       ) : (
         <div className="flex flex-col items-center gap-1.5">
-          <div className="w-8 h-8 rounded-lg bg-slate-700/60 flex items-center justify-center mb-1">
+          <div className="w-8 h-8 rounded-lg bg-slate-200 flex items-center justify-center mb-1">
             <svg
-              className="w-4 h-4 text-slate-400"
+              className="w-4 h-4 text-slate-500"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -394,11 +671,11 @@ function VideoUploadZone({
               />
             </svg>
           </div>
-          <p className="text-xs font-medium text-slate-300">Drop video here</p>
+          <p className="text-xs font-medium text-slate-700">Drop video here</p>
           <p className="text-xs text-slate-500">or click to browse</p>
         </div>
       )}
-      {error && <p className="text-xs text-red-400 mt-2">{error}</p>}
+      {error && <p className="text-xs text-red-600 mt-2">{error}</p>}
     </div>
   );
 }
@@ -439,7 +716,7 @@ function SectionVideos({
   );
 
   const updateVideo = useCallback(
-    (index: number, field: keyof VideoClip, value: string | number) => {
+    (index: number, field: keyof VideoClip, value: string | number | boolean) => {
       onChange({
         ...scene,
         videos: scene.videos.map((v) =>
@@ -491,9 +768,9 @@ function SectionVideos({
           {scene.videos.map((v) => (
             <div
               key={v.index}
-              className="bg-slate-800/40 border border-slate-700/40 rounded-xl p-4 flex gap-4 items-start"
+              className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex gap-4 items-start"
             >
-              <div className="w-7 h-7 rounded-lg bg-indigo-500/15 border border-indigo-500/20 flex items-center justify-center text-xs font-bold text-indigo-400 shrink-0 mt-0.5">
+              <div className="w-7 h-7 rounded-lg bg-indigo-500/15 border border-indigo-500/20 flex items-center justify-center text-xs font-bold text-indigo-600 shrink-0 mt-0.5">
                 {v.index}
               </div>
               <div className="flex flex-col gap-2 flex-1 min-w-0">
@@ -550,8 +827,8 @@ function SectionVideos({
                   title="Set as idle/default video"
                   className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors text-xs font-bold ${
                     scene.idleVideoIndex === v.index
-                      ? "bg-indigo-500/30 text-indigo-300 border border-indigo-500/40"
-                      : "text-slate-600 hover:text-indigo-400 hover:bg-indigo-500/10"
+                      ? "bg-indigo-500/30 text-indigo-600 border border-indigo-500/40"
+                      : "text-slate-600 hover:text-indigo-600 hover:bg-indigo-500/10"
                   }`}
                   aria-label="Set as idle video"
                 >
@@ -575,8 +852,28 @@ function SectionVideos({
                   </svg>
                 </button>
                 <button
+                  onClick={() => updateVideo(v.index, "muted", !v.muted)}
+                  title={v.muted ? "Muted — click to allow sound" : "Sound on — click to mute"}
+                  className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors text-xs font-bold ${
+                    v.muted
+                      ? "bg-red-500/15 text-red-600 border border-red-500/30"
+                      : "text-slate-600 hover:text-indigo-600 hover:bg-indigo-500/10"
+                  }`}
+                  aria-label={v.muted ? "Unmute this clip" : "Mute this clip"}
+                >
+                  {v.muted ? (
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 9.75L19.5 12m0 0l2.25 2.25M19.5 12l2.25-2.25M19.5 12l-2.25 2.25m-10.5-6l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" />
+                    </svg>
+                  ) : (
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" />
+                    </svg>
+                  )}
+                </button>
+                <button
                   onClick={() => removeVideo(v.index)}
-                  className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-600 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                  className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-600 hover:text-red-600 hover:bg-red-500/10 transition-colors"
                   aria-label="Remove clip"
                 >
                   <svg
@@ -623,7 +920,7 @@ function SectionVideos({
 
           <button
             onClick={addVideo}
-            className="flex items-center justify-center gap-2 w-full py-3 rounded-xl border-2 border-dashed border-slate-700/60 text-sm text-slate-500 hover:text-slate-300 hover:border-slate-600 transition-colors"
+            className="flex items-center justify-center gap-2 w-full py-3 rounded-xl border-2 border-dashed border-slate-300 text-sm text-slate-500 hover:text-slate-900 hover:border-slate-400 transition-colors"
           >
             <svg
               className="w-4 h-4"
@@ -679,29 +976,29 @@ function SectionVideos({
             {results.map((r, i) => (
               <div
                 key={i}
-                className="bg-slate-800/60 rounded-xl px-4 py-3 flex items-center gap-3 text-sm"
+                className="bg-slate-100 rounded-xl px-4 py-3 flex items-center gap-3 text-sm"
               >
                 <span
                   className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
                     r.ok === true
-                      ? "bg-emerald-500/20 text-emerald-400"
+                      ? "bg-emerald-500/20 text-emerald-600"
                       : r.ok === false
-                        ? "bg-red-500/20 text-red-400"
-                        : "bg-slate-700 text-slate-400"
+                        ? "bg-red-500/20 text-red-600"
+                        : "bg-slate-200 text-slate-500"
                   }`}
                 >
                   {r.got ?? "?"}
                 </span>
-                <span className="text-slate-400 truncate flex-1 text-xs">
+                <span className="text-slate-500 truncate flex-1 text-xs">
                   {r.reply}
                 </span>
                 {r.ok === false && (
-                  <span className="text-xs text-red-400 shrink-0">
+                  <span className="text-xs text-red-600 shrink-0">
                     expected {r.expected}
                   </span>
                 )}
                 {r.ok === true && (
-                  <span className="text-xs text-emerald-400 shrink-0">
+                  <span className="text-xs text-emerald-600 shrink-0">
                     ✓ correct
                   </span>
                 )}
@@ -772,9 +1069,9 @@ function SectionShare({ scene }: { scene: Scene }) {
             ["Slug", slug],
             ["Status", scene.slug ? "Saved to DB" : "Not saved yet"],
           ].map(([k, v]) => (
-            <div key={k} className="bg-slate-800/40 rounded-xl px-4 py-3">
+            <div key={k} className="bg-slate-50 rounded-xl px-4 py-3">
               <p className="text-xs text-slate-500 mb-0.5">{k}</p>
-              <p className="text-sm text-white font-medium">{v}</p>
+              <p className="text-sm text-slate-900 font-medium">{v}</p>
             </div>
           ))}
         </div>
@@ -787,11 +1084,11 @@ function SectionShare({ scene }: { scene: Scene }) {
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             spellCheck={false}
-            className="flex-1 text-xs text-slate-300 bg-slate-800/60 border border-slate-700/60 rounded-xl px-4 py-3 font-mono outline-none focus:border-indigo-500"
+            className="flex-1 text-xs text-slate-700 bg-slate-100 border border-slate-300 rounded-xl px-4 py-3 font-mono outline-none focus:border-indigo-500"
           />
           <button
             onClick={() => copy(url, "url")}
-            className="px-4 py-2 rounded-xl bg-slate-800 border border-slate-700/60 hover:border-slate-600 text-sm text-slate-300 hover:text-white transition-colors shrink-0"
+            className="px-4 py-2 rounded-xl bg-slate-100 border border-slate-300 hover:border-slate-400 text-sm text-slate-700 hover:text-slate-900 transition-colors shrink-0"
           >
             {copiedUrl ? "Copied!" : "Copy"}
           </button>
@@ -804,18 +1101,18 @@ function SectionShare({ scene }: { scene: Scene }) {
               // eslint-disable-next-line @next/next/no-img-element
               <img src={qrDataUrl} alt={`QR code for ${url}`} className="w-full h-full" />
             ) : (
-              <p className="text-xs text-slate-400">…</p>
+              <p className="text-xs text-slate-500">…</p>
             )}
           </div>
           <div>
-            <p className="text-sm text-white font-medium mb-1">QR Code</p>
+            <p className="text-sm text-slate-900 font-medium mb-1">QR Code</p>
             <p className="text-xs text-slate-500 mb-2">
               Scans directly to your live agent. Print and place near your installation.
             </p>
             <button
               onClick={downloadQr}
               disabled={!qrDataUrl}
-              className="px-4 py-2 rounded-xl bg-slate-800 border border-slate-700/60 hover:border-slate-600 text-sm text-slate-300 hover:text-white transition-colors disabled:opacity-40"
+              className="px-4 py-2 rounded-xl bg-slate-100 border border-slate-300 hover:border-slate-400 text-sm text-slate-700 hover:text-slate-900 transition-colors disabled:opacity-40"
             >
               Download PNG
             </button>
@@ -829,13 +1126,13 @@ function SectionShare({ scene }: { scene: Scene }) {
         subtitle="Drop into any webpage or kiosk browser."
       >
         <div className="relative">
-          <code className="block text-xs text-slate-400 bg-slate-800/60 border border-slate-700/60 rounded-xl px-4 py-3 font-mono break-all leading-relaxed">
+          <code className="block text-xs text-slate-500 bg-slate-100 border border-slate-300 rounded-xl px-4 py-3 font-mono break-all leading-relaxed">
             {embedCode}
           </code>
         </div>
         <button
           onClick={() => copy(embedCode, "embed")}
-          className="self-start px-4 py-2 rounded-xl bg-slate-800 border border-slate-700/60 hover:border-slate-600 text-sm text-slate-300 hover:text-white transition-colors"
+          className="self-start px-4 py-2 rounded-xl bg-slate-100 border border-slate-300 hover:border-slate-400 text-sm text-slate-700 hover:text-slate-900 transition-colors"
         >
           {copiedEmbed ? "Copied!" : "Copy embed code"}
         </button>
@@ -955,6 +1252,7 @@ function isDone(id: NavSection, scene: Scene): boolean {
 
 export default function CreatorPage() {
   const [active, setActive] = useState<NavSection>("scene");
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   // Always start with defaultScene so server and client render identically (no hydration mismatch).
   // Load from localStorage in useEffect — client-only, runs after hydration.
   const [scene, setScene] = useState<Scene>(defaultScene);
@@ -962,7 +1260,7 @@ export default function CreatorPage() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  // Load latest scene from DB on mount — source of truth is Supabase, not localStorage
+  // Load latest scene from DB on mount — source of truth is Postgres, not localStorage
   useEffect(() => {
     fetch("/api/scenes/latest")
       .then((r) => (r.ok ? r.json() : null))
@@ -995,11 +1293,23 @@ export default function CreatorPage() {
   };
 
   return (
-    <div className="flex h-screen bg-[#0c0e14] text-white overflow-hidden">
-      {/* ── Sticky sidebar ── */}
-      <aside className="w-56 shrink-0 flex flex-col border-r border-slate-800/80 bg-[#0e1018]">
+    <div className="flex h-screen bg-white text-slate-900 overflow-hidden">
+      {/* ── Mobile backdrop ── */}
+      {mobileNavOpen && (
+        <div
+          className="fixed inset-0 z-30 bg-black/40 md:hidden"
+          onClick={() => setMobileNavOpen(false)}
+        />
+      )}
+
+      {/* ── Sidebar — slides in as a drawer on mobile, static on desktop ── */}
+      <aside
+        className={`fixed md:static inset-y-0 left-0 z-40 w-64 md:w-56 shrink-0 flex flex-col border-r border-slate-200 bg-slate-50 transition-transform duration-200 md:transition-none ${
+          mobileNavOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+        }`}
+      >
         {/* Logo */}
-        <div className="px-4 py-5 border-b border-slate-800/80">
+        <div className="px-4 py-5 border-b border-slate-200">
           <div className="flex items-center gap-2.5">
             <div className="w-7 h-7 rounded-lg bg-indigo-500 flex items-center justify-center shrink-0">
               <svg
@@ -1017,7 +1327,7 @@ export default function CreatorPage() {
               </svg>
             </div>
             <div>
-              <p className="text-sm font-semibold text-white leading-none">
+              <p className="text-sm font-semibold text-slate-900 leading-none">
                 AgentStage
               </p>
               <p className="text-xs text-slate-500 mt-0.5">Creator</p>
@@ -1026,13 +1336,13 @@ export default function CreatorPage() {
         </div>
 
         {/* Scene name badge */}
-        <div className="px-4 py-3 border-b border-slate-800/80">
+        <div className="px-4 py-3 border-b border-slate-200">
           <p className="text-xs text-slate-500 mb-1">Current scene</p>
-          <p className="text-sm text-white font-medium truncate">
+          <p className="text-sm text-slate-900 font-medium truncate">
             {scene.name || "Untitled scene"}
           </p>
           {scene.slug && (
-            <p className="text-xs text-indigo-400/70 truncate mt-0.5">
+            <p className="text-xs text-indigo-600/70 truncate mt-0.5">
               /{scene.slug}
             </p>
           )}
@@ -1045,19 +1355,19 @@ export default function CreatorPage() {
               key={item.id}
               {...item}
               active={active === item.id}
-              onClick={() => setActive(item.id)}
+              onClick={() => { setActive(item.id); setMobileNavOpen(false); }}
               done={isDone(item.id, scene)}
             />
           ))}
         </nav>
 
         {/* Bottom: save + preview */}
-        <div className="px-3 py-3 border-t border-slate-800/80 flex flex-col gap-2">
+        <div className="px-3 py-3 border-t border-slate-200 flex flex-col gap-2">
           {saveError && (
-            <p className="text-xs text-red-400 px-1">{saveError}</p>
+            <p className="text-xs text-red-600 px-1">{saveError}</p>
           )}
           {saved && (
-            <p className="text-xs text-emerald-400 flex items-center gap-1.5 px-1">
+            <p className="text-xs text-emerald-600 flex items-center gap-1.5 px-1">
               <svg
                 className="w-3.5 h-3.5"
                 fill="none"
@@ -1083,7 +1393,7 @@ export default function CreatorPage() {
           </button>
           <a
             href="/"
-            className="w-full py-2 rounded-xl border border-slate-700/60 hover:border-slate-600 text-sm text-slate-400 hover:text-white text-center transition-colors"
+            className="w-full py-2 rounded-xl border border-slate-300 hover:border-slate-400 text-sm text-slate-500 hover:text-slate-900 text-center transition-colors"
           >
             Preview →
           </a>
@@ -1091,21 +1401,32 @@ export default function CreatorPage() {
       </aside>
 
       {/* ── Scrollable content ── */}
-      <main className="flex-1 overflow-y-auto">
+      <main className="flex-1 overflow-y-auto min-w-0">
         {/* Sticky top bar */}
-        <div className="sticky top-0 z-10 bg-[#0c0e14]/90 backdrop-blur border-b border-slate-800/60 px-8 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-base font-semibold text-white">
-              {NAV.find((n) => n.id === active)?.label}
-            </h1>
-            <p className="text-xs text-slate-500 mt-0.5">
-              {active === "scene" &&
-                "Core identity and behaviour of your agent"}
-              {active === "character" &&
-                "Name and appearance of your character"}
-              {active === "videos" && "Upload and label your video clips"}
-              {active === "share" && "Share, embed or print your agent"}
-            </p>
+        <div className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-slate-200 px-4 md:px-8 py-4 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <button
+              onClick={() => setMobileNavOpen(true)}
+              className="md:hidden w-9 h-9 shrink-0 rounded-lg flex items-center justify-center text-slate-600 hover:bg-slate-100 transition-colors"
+              aria-label="Open menu"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5M3.75 17.25h16.5" />
+              </svg>
+            </button>
+            <div className="min-w-0">
+              <h1 className="text-base font-semibold text-slate-900 truncate">
+                {NAV.find((n) => n.id === active)?.label}
+              </h1>
+              <p className="text-xs text-slate-500 mt-0.5 truncate">
+                {active === "scene" &&
+                  "Core identity and behaviour of your agent"}
+                {active === "character" &&
+                  "Name and appearance of your character"}
+                {active === "videos" && "Upload and label your video clips"}
+                {active === "share" && "Share, embed or print your agent"}
+              </p>
+            </div>
           </div>
           {/* Progress pills */}
           <div className="hidden sm:flex items-center gap-2">
@@ -1114,8 +1435,8 @@ export default function CreatorPage() {
                 key={n.id}
                 className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
                   isDone(n.id, scene)
-                    ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
-                    : "bg-slate-800/60 border-slate-700/60 text-slate-500"
+                    ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-600"
+                    : "bg-slate-100 border-slate-300 text-slate-500"
                 }`}
               >
                 {isDone(n.id, scene) ? (
@@ -1133,7 +1454,7 @@ export default function CreatorPage() {
                     />
                   </svg>
                 ) : (
-                  <div className="w-1.5 h-1.5 rounded-full bg-slate-600" />
+                  <div className="w-1.5 h-1.5 rounded-full bg-slate-300" />
                 )}
                 {n.label}
               </div>
@@ -1142,7 +1463,7 @@ export default function CreatorPage() {
         </div>
 
         {/* Page content */}
-        <div className="max-w-2xl mx-auto px-8 py-8">
+        <div className="max-w-2xl mx-auto px-4 md:px-8 py-6 md:py-8">
           {active === "scene" && (
             <SectionScene scene={scene} onChange={setScene} />
           )}

@@ -23,7 +23,7 @@ export default function RootLayout({
 }) {
   return (
     // lang="en" helps screen readers and browsers know the page language
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       {/* antialiased = smoother font rendering on all screens */}
       <body className="antialiased">{children}</body>
     </html>
