@@ -1,0 +1,565 @@
+"use client";
+
+import { useEffect, useRef, useState, useCallback } from "react";
+import { useParams } from "next/navigation";
+import { scene as defaultScene, type Scene } from "@/lib/scene";
+
+type Message = { role: "user" | "assistant"; content: string };
+type Phase = "idle" | "listening" | "thinking" | "speaking";
+type Model = "mistral-large-latest" | "open-mistral-nemo";
+
+// Strips a complete or in-progress [[OFFER:n]] marker so it's never shown or spoken.
+const stripOfferMarker = (text: string) =>
+  text.replace(/\[\[OFFER:?\d*\]?\]?\s*$/i, "");
+
+const AFFIRMATIVE_RE = /^\s*(yes|yeah|yep|sure|please|ok(ay)?|go ahead|do it|absolutely|of course)\b/i;
+
+export default function StagePage() {
+  const params = useParams();
+  const slug = params.slug as string;
+  const [scene, setScene] = useState<Scene>(defaultScene);
+  const [phase, setPhase] = useState<Phase>("idle");
+  const [transcript, setTranscript] = useState("");
+  const [reply, setReply] = useState("");
+  const [videoIndex, setVideoIndex] = useState<number | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const model: Model = "mistral-large-latest";
+  const [conversationStarted, setConversationStarted] = useState(false);
+  const [videoMuted, setVideoMuted] = useState(true);
+  const [voiceMuted, setVoiceMuted] = useState(false);
+  const voiceMutedRef = useRef(false);
+  const currentAudio = useRef<{ ctx: AudioContext; source: AudioBufferSourceNode; gain: GainNode } | null>(null);
+  const activeRequestId = useRef(0);
+  const inactivityTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Index of a clip Mira just offered to play — set when her reply ends with
+  // [[OFFER:n]], consumed on the visitor's very next turn if they say yes.
+  const pendingOfferRef = useRef<number | null>(null);
+
+  const [orientation, setOrientation] = useState<"portrait" | "landscape">("landscape");
+
+  useEffect(() => {
+    const update = () =>
+      setOrientation(
+        scene.orientation === "auto"
+          ? window.innerHeight > window.innerWidth ? "portrait" : "landscape"
+          : scene.orientation,
+      );
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, [scene.orientation]);
+
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const vadAudioCtxRef = useRef<AudioContext | null>(null);
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // ISO language code Scribe detected in the visitor's last utterance (e.g. "eng", "deu", "fas")
+  const spokenLanguageRef = useRef<string | null>(null);
+  // Synchronous guard — React's `phase` state doesn't update until recording actually starts,
+  // leaving a gap where a fast double-tap could start two recording sessions at once.
+  const listeningActiveRef = useRef(false);
+  const synthRef = useRef<SpeechSynthesis | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const t = useRef<Record<string, number>>({});
+
+  useEffect(() => {
+    if (!slug) return;
+    fetch(`/api/scenes/${slug}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data) setScene({ ...defaultScene, ...data });
+      })
+      .catch(() => {});
+  }, [slug]);
+
+  useEffect(() => {
+    setVideoIndex(scene.idleVideoIndex ?? scene.videos.length);
+  }, [scene.idleVideoIndex, scene.videos.length]);
+
+  useEffect(() => {
+    synthRef.current = window.speechSynthesis;
+    const logVoices = () => {
+      const voices = window.speechSynthesis.getVoices();
+      console.log("Available voices:", voices.map((v) => `${v.name} (${v.lang})`));
+    };
+    logVoices();
+    window.speechSynthesis.onvoiceschanged = logVoices;
+  }, []);
+
+  const speak = useCallback(async (text: string) => {
+    try {
+      const res = await fetch("/api/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, voiceId: scene.voiceId, language: spokenLanguageRef.current }),
+      });
+      if (!res.ok) throw new Error("TTS failed");
+      const arrayBuffer = await res.arrayBuffer();
+      const audioCtx = new AudioContext();
+      const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+      const source = audioCtx.createBufferSource();
+      source.buffer = audioBuffer;
+      const gain = audioCtx.createGain();
+      gain.gain.value = voiceMutedRef.current ? 0 : 1;
+      source.connect(gain);
+      gain.connect(audioCtx.destination);
+      currentAudio.current = { ctx: audioCtx, source, gain };
+      const returnToIdle = () => {
+        currentAudio.current = null;
+        setPhase("idle");
+      };
+      source.onended = returnToIdle;
+      source.start();
+    } catch {
+      const synth = synthRef.current ?? window.speechSynthesis;
+      if (!synth) { setPhase("idle"); return; }
+      const utt = new SpeechSynthesisUtterance(text);
+      utt.rate = 0.88; utt.lang = "en-US";
+      utt.onend = () => { setPhase("idle"); };
+      utt.onerror = () => { setPhase("idle"); };
+      synth.speak(utt);
+    }
+  }, [scene.idleVideoIndex, scene.videos.length, scene.voiceId]);
+
+  const ttsFetch = useCallback((text: string) =>
+    fetch("/api/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, voiceId: scene.voiceId, language: spokenLanguageRef.current }),
+    }).then((r) => { if (!r.ok) throw new Error("TTS failed"); return r.arrayBuffer(); }), [scene.voiceId]);
+
+  // play pre-fetched audio chunks back-to-back; falls back to speak() on error
+  const speakChunks = useCallback(async (chunkPromises: Promise<ArrayBuffer>[], fullText: string) => {
+    let audioCtx: AudioContext | null = null;
+    try {
+      audioCtx = new AudioContext();
+      for (const p of chunkPromises) {
+        const audioBuffer = await audioCtx.decodeAudioData(await p);
+        await new Promise<void>((resolve) => {
+          const source = audioCtx!.createBufferSource();
+          source.buffer = audioBuffer;
+          source.connect(audioCtx!.destination);
+          source.onended = () => resolve();
+          source.start();
+        });
+      }
+      audioCtx.close();
+      setPhase("idle");
+    } catch {
+      audioCtx?.close();
+      speak(fullText);
+    }
+  }, [scene.idleVideoIndex, scene.videos.length, speak]);
+
+  const triggerLeaving = useCallback(() => {
+    const leavingClip = scene.videos.find((v) => v.trigger === "leaving");
+    if (leavingClip) setVideoIndex(leavingClip.index);
+    setTimeout(() => {
+      setVideoIndex(scene.idleVideoIndex ?? 1);
+      setConversationStarted(false);
+      setMessages([]);
+      setReply("");
+      setPhase("idle");
+      pendingOfferRef.current = null;
+    }, 4000);
+  }, [scene.videos, scene.idleVideoIndex]);
+
+  const resetInactivityTimer = useCallback(() => {
+    if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
+    inactivityTimer.current = setTimeout(() => triggerLeaving(), 60000);
+  }, [triggerLeaving]);
+
+  const selectVideo = useCallback(async (botReply: string): Promise<number> => {
+    try {
+      const res = await fetch("/api/select-video", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ botReply, slug }),
+      });
+      const data = await res.json();
+      t.current.selectorEnd = performance.now();
+      return data.videoIndex as number;
+    } catch {
+      return scene.idleVideoIndex;
+    }
+  }, [scene.idleVideoIndex, slug]);
+
+  const sendMessage = useCallback(async (userText: string) => {
+    const myId = ++activeRequestId.current;
+    setPhase("thinking"); setReply("");
+    t.current = {};
+    t.current.thinkStart = performance.now();
+
+    // If Mira just offered a specific clip and the visitor said yes, play that
+    // exact clip instead of running the reply back through topic-based selection.
+    const offeredIndex = pendingOfferRef.current;
+    const isConfirmingOffer = offeredIndex !== null && AFFIRMATIVE_RE.test(userText);
+    pendingOfferRef.current = null; // an offer only holds for the very next turn
+
+    const newMessages: Message[] = [...messages, { role: "user", content: userText }];
+    setMessages(newMessages);
+
+    const res = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages: newMessages, model, spokenLanguage: spokenLanguageRef.current, slug }),
+    });
+    if (myId !== activeRequestId.current) { try { res.body?.cancel(); } catch {} return; }
+    if (!res.body) { setPhase("idle"); return; }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let fullReply = ""; let firstChunk = true;
+    let videoSelectPromise: Promise<number> = Promise.resolve(scene.idleVideoIndex);
+
+    while (true) {
+      if (myId !== activeRequestId.current) { try { reader.cancel(); } catch {} return; }
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = decoder.decode(value, { stream: true });
+      for (const line of chunk.split("\n").filter((l) => l.startsWith("data: "))) {
+        const json = line.slice(6).trim();
+        if (json === "[DONE]") continue;
+        try {
+          const delta = JSON.parse(json).choices?.[0]?.delta?.content ?? "";
+          if (delta) {
+            if (firstChunk) {
+              t.current.firstToken = performance.now();
+              firstChunk = false;
+              videoSelectPromise = isConfirmingOffer && offeredIndex !== null
+                ? Promise.resolve(offeredIndex)
+                : selectVideo(fullReply + delta);
+            }
+            fullReply += delta;
+            if (myId === activeRequestId.current) setReply(stripOfferMarker(fullReply));
+          }
+        } catch { /* skip malformed lines */ }
+      }
+    }
+
+    if (myId !== activeRequestId.current) return;
+
+    // Extract any offer marker before speaking/displaying, but keep the raw
+    // reply (marker included) in conversation history so Mira remembers she asked.
+    const offerMatch = fullReply.match(/\[\[OFFER:(\d+)\]\]/);
+    if (offerMatch) pendingOfferRef.current = parseInt(offerMatch[1], 10);
+    const cleanReply = fullReply.replace(/\[\[OFFER:\d+\]\]/, "").trim();
+
+    setMessages((prev) => [...prev, { role: "assistant", content: fullReply }]);
+    setPhase("speaking");
+    setReply(cleanReply);
+    speak(cleanReply);
+
+    videoSelectPromise.then((idx) => {
+      if (myId !== activeRequestId.current) return;
+      const clip = scene.videos.find((v) => v.index === idx);
+      if (clip?.includesSpeech) {
+        const wordCount = fullReply.split(/\s+/).length;
+        setTimeout(() => { if (myId === activeRequestId.current) setVideoIndex(idx); }, wordCount * 450 + 500);
+      } else {
+        setVideoIndex(idx);
+      }
+    });
+  }, [messages, model, selectVideo, speak, scene.idleVideoIndex, scene.videos, slug]);
+
+  const finalizeRecording = useCallback((finalTranscript: string) => {
+    if (!finalTranscript.trim()) { setPhase("idle"); return; }
+    if (/\b(bye|goodbye|see you|farewell|ciao|tsch[üu]ss|auf wiedersehen|bis bald)\b/i.test(finalTranscript)) {
+      triggerLeaving(); return;
+    }
+    const isEnglishGreeting = /^(hi+|hello|hey|howdy|greetings|hi there|hello there|hey there|good morning|good afternoon|good evening)[\s!.]*$/i.test(finalTranscript.trim());
+    if (isEnglishGreeting) {
+      const greeting = scene.idleMessage || "Hi! Ask me anything.";
+      setPhase("speaking");
+      setReply(greeting);
+      speak(greeting);
+      return;
+    }
+    resetInactivityTimer();
+    sendMessage(finalTranscript.trim());
+  }, [sendMessage, resetInactivityTimer, triggerLeaving, speak, scene.idleMessage]);
+
+  const stopSpeaking = useCallback(() => {
+    if (currentAudio.current) {
+      try { currentAudio.current.source.stop(); } catch {}
+      try { currentAudio.current.ctx.close(); } catch {}
+      currentAudio.current = null;
+    }
+    (synthRef.current ?? window.speechSynthesis)?.cancel();
+  }, []);
+
+  const stopListening = useCallback(() => {
+    if (!listeningActiveRef.current) return;
+    listeningActiveRef.current = false;
+    if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null; }
+    t.current.listenEnd = performance.now();
+    mediaRecorderRef.current?.stop();
+  }, []);
+
+  const startListening = useCallback(async () => {
+    if (listeningActiveRef.current) return;
+    listeningActiveRef.current = true;
+
+    if (!conversationStarted) {
+      setConversationStarted(true);
+      const enteringClip = scene.videos.find((v) => v.trigger === "entering");
+      if (enteringClip) {
+        setVideoIndex(enteringClip.index);
+        setTimeout(() => setVideoIndex(scene.idleVideoIndex ?? 1), 3000);
+      }
+      resetInactivityTimer();
+    }
+
+    let stream: MediaStream;
+    try {
+      // cleaner input = noticeably better transcription, especially for German
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          channelCount: 1,
+        },
+      });
+    } catch {
+      listeningActiveRef.current = false;
+      alert("Microphone access is required.");
+      return;
+    }
+
+    mediaStreamRef.current = stream;
+    audioChunksRef.current = [];
+    const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+      ? "audio/webm;codecs=opus"
+      : undefined;
+    const recorder = new MediaRecorder(stream, {
+      ...(mimeType ? { mimeType } : {}),
+      audioBitsPerSecond: 128000,
+    });
+    mediaRecorderRef.current = recorder;
+
+    recorder.ondataavailable = (e) => {
+      if (e.data.size > 0) audioChunksRef.current.push(e.data);
+    };
+
+    recorder.onstop = async () => {
+      stream.getTracks().forEach((tr) => tr.stop());
+      vadAudioCtxRef.current?.close().catch(() => {});
+      vadAudioCtxRef.current = null;
+
+      const blob = new Blob(audioChunksRef.current, { type: recorder.mimeType || "audio/webm" });
+      if (blob.size < 2000) { setPhase("idle"); return; } // essentially silence, nothing said
+
+      setPhase("thinking");
+      try {
+        const fd = new FormData();
+        fd.append("audio", blob, "audio.webm");
+        const res = await fetch("/api/stt", { method: "POST", body: fd });
+        const data = await res.json();
+        const text: string = (data.text ?? "").trim();
+        if (text) {
+          // remember what language Scribe detected so Mira replies in the same one —
+          // but only when Scribe is confident; a wrong guess (e.g. Turkish for Persian)
+          // would otherwise force replies into the wrong language
+          spokenLanguageRef.current =
+            data.languageCode && (data.languageProbability ?? 0) >= 0.85
+              ? data.languageCode
+              : null;
+          setTranscript(text);
+          finalizeRecording(text);
+        } else {
+          setPhase("idle");
+        }
+      } catch {
+        setPhase("idle");
+      }
+    };
+
+    recorder.start();
+    setPhase("listening");
+    setTranscript("");
+    t.current.listenStart = performance.now();
+
+    // Auto-stop after a pause in speech, using live volume analysis
+    // (Scribe transcribes a finished clip, so there's no native "onresult" silence signal).
+    const audioCtx = new AudioContext();
+    vadAudioCtxRef.current = audioCtx;
+    const source = audioCtx.createMediaStreamSource(stream);
+    const analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 2048;
+    source.connect(analyser);
+    const levelData = new Uint8Array(analyser.frequencyBinCount);
+
+    const SILENCE_RMS_THRESHOLD = 8;
+    const SILENCE_MS = 4000;
+    let hasSpoken = false;
+
+    const checkLevel = () => {
+      if (!listeningActiveRef.current) return;
+      analyser.getByteTimeDomainData(levelData);
+      let sumSquares = 0;
+      for (let i = 0; i < levelData.length; i++) {
+        const v = levelData[i] - 128;
+        sumSquares += v * v;
+      }
+      const rms = Math.sqrt(sumSquares / levelData.length);
+
+      if (rms > SILENCE_RMS_THRESHOLD) {
+        hasSpoken = true;
+        if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null; }
+      } else if (hasSpoken && !silenceTimerRef.current) {
+        silenceTimerRef.current = setTimeout(() => stopListening(), SILENCE_MS);
+      }
+      requestAnimationFrame(checkLevel);
+    };
+    requestAnimationFrame(checkLevel);
+  }, [conversationStarted, scene.videos, scene.idleVideoIndex, resetInactivityTimer, finalizeRecording, stopListening]);
+
+  const videoMutedRef = useRef(true);
+  videoMutedRef.current = videoMuted;
+
+  useEffect(() => {
+    if (videoIndex === null) return;
+    const clip = scene.videos.find((v) => v.index === videoIndex);
+    const el = videoRef.current;
+    if (el && clip?.url) {
+      el.src = clip.url;
+      el.muted = clip.muted || videoMutedRef.current;
+      el.play().catch(() => {});
+    }
+  }, [videoIndex, scene.videos]);
+
+  // mute/unmute the running player without reloading it — a clip marked
+  // muted by the creator always stays muted regardless of the visitor toggle
+  useEffect(() => {
+    const clip = scene.videos.find((v) => v.index === videoIndex);
+    if (videoRef.current) videoRef.current.muted = !!clip?.muted || videoMuted;
+  }, [videoMuted, videoIndex, scene.videos]);
+
+  const toggleVoiceMute = useCallback(() => {
+    const next = !voiceMutedRef.current;
+    voiceMutedRef.current = next;
+    setVoiceMuted(next);
+    // silence/restore the running audio without stopping it —
+    // unmuting resumes mid-sentence
+    if (currentAudio.current) {
+      currentAudio.current.gain.gain.value = next ? 0 : 1;
+    }
+    if (next) window.speechSynthesis?.cancel();
+  }, []);
+
+  const phaseLabel: Record<Phase, string> = {
+    idle: "Tap to speak", listening: "Listening…", thinking: "Thinking…", speaking: "Speaking…",
+  };
+  const phaseRing: Record<Phase, string> = {
+    idle: "bg-white/10 hover:bg-white/20 border-white/30",
+    listening: "bg-red-500/70 border-red-400 animate-pulse",
+    thinking: "bg-yellow-400/50 border-yellow-300 animate-pulse",
+    speaking: "bg-green-400/50 border-green-300",
+  };
+
+  const loopMs = t.current.firstToken && t.current.listenEnd
+    ? Math.round(t.current.firstToken - t.current.listenEnd) : null;
+
+  return (
+    <main className="relative w-full h-screen overflow-hidden bg-black flex items-center justify-center">
+      <video ref={videoRef} className="absolute inset-0 w-full h-full object-cover opacity-80"
+        autoPlay loop muted={videoMuted} playsInline
+        style={{ pointerEvents: "none" }} />
+      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent" />
+
+      {/* Mute controls — top right */}
+      <div className="absolute top-4 right-4 z-20 flex gap-2">
+        <button
+          onClick={() => setVideoMuted((m) => !m)}
+          aria-label={videoMuted ? "Unmute video" : "Mute video"}
+          title={videoMuted ? "Unmute video" : "Mute video"}
+          className="w-11 h-11 rounded-full bg-black/40 border border-white/20 flex items-center justify-center text-white/70 hover:text-white hover:border-white/50 transition-all"
+        >
+          {/* film icon with slash if muted */}
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3.375 19.5h17.25m-17.25 0a1.125 1.125 0 01-1.125-1.125M3.375 19.5h1.5C5.496 19.5 6 18.996 6 18.375m-3.75 0V5.625m0 12.75v-1.5c0-.621.504-1.125 1.125-1.125m18.375 2.625V5.625m0 12.75c0 .621-.504 1.125-1.125 1.125m1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125m0 3.75h-1.5A1.125 1.125 0 0118 18.375M20.625 4.5H3.375m17.25 0c.621 0 1.125.504 1.125 1.125M20.625 4.5h-1.5C18.504 4.5 18 5.004 18 5.625m3.75 0v1.5c0 .621-.504 1.125-1.125 1.125M3.375 4.5c-.621 0-1.125.504-1.125 1.125M3.375 4.5h1.5C5.496 4.5 6 5.004 6 5.625m-3.75 0v1.5c0 .621.504 1.125 1.125 1.125m0 0h1.5m-1.5 0c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125m1.5-3.75C5.496 8.25 6 7.746 6 7.125v-1.5M4.875 8.25C5.496 8.25 6 8.754 6 9.375v1.5m0-5.25v5.25m0-5.25C6 5.004 6.504 4.5 7.125 4.5h9.75c.621 0 1.125.504 1.125 1.125m1.125 2.625h1.5m-1.5 0A1.125 1.125 0 0118 7.125v-1.5m1.125 2.625c-.621 0-1.125.504-1.125 1.125v1.5m2.625-2.625c.621 0 1.125.504 1.125 1.125v1.5c0 .621-.504 1.125-1.125 1.125M18 5.625v5.25M7.125 12h9.75m-9.75 0A1.125 1.125 0 016 10.875M7.125 12C6.504 12 6 12.504 6 13.125m0-2.25C6 11.496 5.496 12 4.875 12M18 10.875c0 .621-.504 1.125-1.125 1.125M18 10.875c0 .621.504 1.125 1.125 1.125m-2.25 0c.621 0 1.125.504 1.125 1.125m-12 5.25v-5.25m0 5.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125m-12 0v-1.5c0-.621-.504-1.125-1.125-1.125M18 18.375v-5.25m0 5.25v-1.5c0-.621.504-1.125 1.125-1.125M18 13.125v1.5c0 .621.504 1.125 1.125 1.125m-2.25 0c.621 0 1.125.504 1.125 1.125m0 0h1.5m-1.5 0c-.621 0-1.125.504-1.125 1.125"/>
+            {videoMuted && <line x1="3" y1="21" x2="21" y2="3" stroke="currentColor" strokeWidth={2} />}
+          </svg>
+        </button>
+        <button
+          onClick={toggleVoiceMute}
+          aria-label={voiceMuted ? `Unmute ${scene.characterName || "voice"}` : `Mute ${scene.characterName || "voice"}`}
+          title={voiceMuted ? `Unmute ${scene.characterName || "voice"}` : `Mute ${scene.characterName || "voice"}`}
+          className={`w-11 h-11 rounded-full border flex items-center justify-center transition-all ${
+            voiceMuted
+              ? "bg-red-500/30 border-red-400/60 text-red-200"
+              : "bg-black/40 border-white/20 text-white/70 hover:text-white hover:border-white/50"
+          }`}
+        >
+          {voiceMuted ? (
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 9.75L19.5 12m0 0l2.25 2.25M19.5 12l2.25-2.25M19.5 12l-2.25 2.25m-10.5-6l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" />
+            </svg>
+          ) : (
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" />
+            </svg>
+          )}
+        </button>
+      </div>
+
+      {/* Character name — top center */}
+      <div className="absolute top-8 left-0 right-0 z-10 flex flex-col items-center">
+        <p className="text-white/50 text-sm tracking-widest uppercase">{scene.name}</p>
+        <h1 className="text-white text-5xl font-light tracking-wide">{scene.characterName}</h1>
+      </div>
+
+      {/* Mic button + reply — bottom center */}
+      <div className="absolute bottom-10 left-0 right-0 z-10 flex flex-col items-center gap-3">
+        {transcript && (
+          <p className="text-white/40 text-sm italic mb-1">&ldquo;{transcript}&rdquo;</p>
+        )}
+        <button
+          onClick={() => {
+            if (phase === "idle") startListening();
+            else if (phase === "listening") stopListening();
+            else if (phase === "thinking" || phase === "speaking") {
+              activeRequestId.current++; // invalidate whatever response is still in flight
+              stopSpeaking();
+              setReply("");
+              startListening();
+            }
+          }}
+          aria-label={phaseLabel[phase]}
+          className={`w-20 h-20 rounded-full border-2 flex items-center justify-center
+            transition-all duration-200 select-none ${phaseRing[phase]}`}
+        >
+          <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round"
+              d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 016 0v8.25a3 3 0 01-3 3z" />
+          </svg>
+        </button>
+        <p className="text-white/50 text-xs">{phaseLabel[phase]}</p>
+        {/* Reply / idle message — below mic */}
+        <div className="px-8 max-w-xl text-center mt-1">
+          {scene.showBotText && (
+            <p className="text-white text-lg leading-relaxed drop-shadow">
+              {phase === "idle" && !reply ? scene.idleMessage : reply || "…"}
+            </p>
+          )}
+          {!scene.showBotText && phase === "idle" && (
+            <p className="text-white text-lg leading-relaxed drop-shadow">{scene.idleMessage}</p>
+          )}
+        </div>
+      </div>
+
+      {process.env.NODE_ENV === "development" && loopMs !== null && (
+        <div className="absolute top-20 right-4 z-20 bg-black/70 text-white/80 text-xs p-3 rounded-lg font-mono space-y-1">
+          <p className="font-bold text-white mb-1">Latency — {model === "mistral-large-latest" ? "Large" : "Nemo"}</p>
+          <p>STT → first token: <span className="text-yellow-300">{loopMs}ms</span></p>
+          {t.current.selectorEnd && t.current.thinkStart && (
+            <p>Selector: <span className="text-green-300">{Math.round(t.current.selectorEnd - t.current.thinkStart)}ms</span></p>
+          )}
+          <p className="text-white/40">Video: {videoIndex}</p>
+        </div>
+      )}
+    </main>
+  );
+}

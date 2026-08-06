@@ -1,11 +1,11 @@
 export function toScene(agent: any, videoRows: any[]) {
   return {
-    name: agent.name,
-    characterName: agent.character_name,
-    systemPrompt: agent.system_prompt,
-    idleMessage: agent.idle_message,
-    selectionPrompt: agent.selection_prompt,
-    orientation: agent.orientation,
+    name: agent.name ?? "",
+    characterName: agent.character_name ?? "",
+    systemPrompt: agent.system_prompt ?? "",
+    idleMessage: agent.idle_message ?? "",
+    selectionPrompt: agent.selection_prompt ?? "",
+    orientation: agent.orientation ?? "auto",
     showBotText: agent.show_bot_text,
     idleVideoIndex: agent.idle_video_index,
     slug: agent.slug,

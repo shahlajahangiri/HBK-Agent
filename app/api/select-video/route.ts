@@ -2,8 +2,8 @@ import { NextRequest } from "next/server";
 import { loadScene } from "@/lib/load-scene";
 
 export async function POST(req: NextRequest) {
-  const { botReply } = await req.json();
-  const scene = await loadScene();
+  const { botReply, slug } = await req.json();
+  const scene = await loadScene(slug);
 
   const selectableVideos = scene.videos.filter(v => !v.trigger);
 

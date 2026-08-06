@@ -1,18 +1,51 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Creator from "./Creator";
 import Login from "./Login";
+import AgentList from "./AgentList";
 
 export default function Page() {
+  const [checking, setChecking] = useState(true);
   const [loggedIn, setLoggedIn] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [agentId, setAgentId] = useState<number | null>(null);
 
-  // no database locally — skip login in development only
-  const isDev = process.env.NODE_ENV === "development";
+  useEffect(() => {
+    fetch("/api/me")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        setLoggedIn(!!data);
+        setIsAdmin(!!data?.isAdmin);
+      })
+      .catch(() => setLoggedIn(false))
+      .finally(() => setChecking(false));
+  }, []);
 
-  if (!loggedIn && !isDev) {
-    return <Login onSuccess={() => setLoggedIn(true)} />;
+  const handleLoginSuccess = () => {
+    setLoggedIn(true);
+    fetch("/api/me")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => setIsAdmin(!!data?.isAdmin))
+      .catch(() => {});
+  };
+
+  const logout = () => {
+    fetch("/api/logout", { method: "POST" }).finally(() => {
+      setLoggedIn(false);
+      setAgentId(null);
+    });
+  };
+
+  if (checking) return null;
+
+  if (!loggedIn) {
+    return <Login onSuccess={handleLoginSuccess} />;
   }
 
-  return <Creator />;
+  if (agentId === null) {
+    return <AgentList onSelect={setAgentId} onLogout={logout} isAdmin={isAdmin} />;
+  }
+
+  return <Creator agentId={agentId} onBack={() => setAgentId(null)} />;
 }

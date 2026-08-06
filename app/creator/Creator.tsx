@@ -3,7 +3,18 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import QRCode from "qrcode";
 import type { Scene, VideoClip } from "@/lib/scene";
-import { scene as defaultScene } from "@/lib/scene";
+
+const blankScene: Scene = {
+  name: "",
+  characterName: "",
+  systemPrompt: "",
+  idleMessage: "",
+  selectionPrompt: "",
+  videos: [],
+  orientation: "auto",
+  showBotText: true,
+  idleVideoIndex: 0,
+};
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -16,8 +27,6 @@ interface TestResult {
   ok: boolean | null;
   loading: boolean;
 }
-
-const STORAGE_KEY = "agentStageScene";
 
 // ─── Shared primitives ────────────────────────────────────────────────────────
 
@@ -183,7 +192,23 @@ function SectionScene({
         <Input
           value={scene.name}
           onChange={(e) => onChange({ ...scene, name: e.target.value })}
-          placeholder="e.g. HBK Exhibition Guide"
+          placeholder="e.g. Museum Guide, Campus Tour, Church Welcome Guide"
+        />
+      </Field>
+
+      <Field
+        label="Custom URL"
+        hint="This is the link visitors use, e.g. yoursite.com/church-guide. Lowercase letters, numbers, and hyphens only."
+      >
+        <Input
+          value={scene.slug ?? ""}
+          onChange={(e) =>
+            onChange({
+              ...scene,
+              slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g, "-"),
+            })
+          }
+          placeholder="e.g. church-guide"
         />
       </Field>
 
@@ -199,7 +224,7 @@ function SectionScene({
           rows={6}
           value={scene.systemPrompt}
           onChange={(e) => onChange({ ...scene, systemPrompt: e.target.value })}
-          placeholder="You are Mira, a friendly guide at…"
+          placeholder="You are [name], a friendly guide who helps visitors learn about [place/topic]. Keep replies to 1-2 short sentences — this is a voice conversation."
         />
       </Field>
 
@@ -210,7 +235,7 @@ function SectionScene({
         <Input
           value={scene.idleMessage}
           onChange={(e) => onChange({ ...scene, idleMessage: e.target.value })}
-          placeholder="Hi! Ask me anything about the exhibition."
+          placeholder="Hi! I'm here to help — ask me anything."
         />
       </Field>
 
@@ -276,7 +301,7 @@ function SectionCharacter({
             onChange={(e) =>
               onChange({ ...scene, characterName: e.target.value })
             }
-            placeholder="Mira"
+            placeholder="e.g. Mira, Gabriel, Aria"
           />
         </Field>
       </SectionCard>
@@ -764,6 +789,14 @@ function SectionVideos({
         title="Video Clips"
         subtitle="Upload one video per emotion or topic. The AI picks the right one automatically."
       >
+        {scene.videos.length === 0 && (
+          <p className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 mb-1">
+            Tip: most guides work well with a few categories like <strong>Idle</strong> (default),{" "}
+            <strong>Happy/Welcoming</strong>, <strong>Serious/Detailed</strong>,{" "}
+            <strong>Entering</strong> (plays once at the start), and <strong>Leaving</strong> (plays on
+            goodbye) — but label yours however fits your guide.
+          </p>
+        )}
         <div className="flex flex-col gap-3">
           {scene.videos.map((v) => (
             <div
@@ -1019,16 +1052,17 @@ function SectionShare({ scene }: { scene: Scene }) {
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-|-$/g, "") || "my-scene";
-  // share the live site itself — the visitor page is at the root
-  const [url, setUrl] = useState("");
-  useEffect(() => { setUrl(window.location.origin + "/"); }, []);
+  // Each agent's live page is at /{slug} — only valid once the agent has been saved.
+  const [origin, setOrigin] = useState("");
+  useEffect(() => { setOrigin(window.location.origin); }, []);
+  const url = scene.slug ? `${origin}/${scene.slug}` : "";
   const embedCode = `<iframe src="${url}" width="420" height="720" allow="microphone" frameborder="0"></iframe>`;
   const [copiedUrl, setCopiedUrl] = useState(false);
   const [copiedEmbed, setCopiedEmbed] = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState("");
 
   useEffect(() => {
-    if (!url) return;
+    if (!url) { setQrDataUrl(""); return; }
     QRCode.toDataURL(url, { width: 512, margin: 2 })
       .then(setQrDataUrl)
       .catch(() => setQrDataUrl(""));
@@ -1078,46 +1112,61 @@ function SectionShare({ scene }: { scene: Scene }) {
       </SectionCard>
 
       {/* Share URL */}
-      <SectionCard title="Share" subtitle="Give this link to visitors. Edit it freely — the QR code updates live.">
-        <div className="flex gap-2">
-          <input
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            spellCheck={false}
-            className="flex-1 text-xs text-slate-700 bg-slate-100 border border-slate-300 rounded-xl px-4 py-3 font-mono outline-none focus:border-indigo-500"
-          />
-          <button
-            onClick={() => copy(url, "url")}
-            className="px-4 py-2 rounded-xl bg-slate-100 border border-slate-300 hover:border-slate-400 text-sm text-slate-700 hover:text-slate-900 transition-colors shrink-0"
-          >
-            {copiedUrl ? "Copied!" : "Copy"}
-          </button>
-        </div>
+      <SectionCard
+        title="Share"
+        subtitle={
+          scene.slug
+            ? "Give this link to visitors. To change it, edit the Custom URL field in Scene and save."
+            : "Save your agent at least once to get a shareable link."
+        }
+      >
+        {url ? (
+          <>
+            <div className="flex gap-2">
+              <input
+                value={url}
+                readOnly
+                spellCheck={false}
+                className="flex-1 text-xs text-slate-700 bg-slate-100 border border-slate-300 rounded-xl px-4 py-3 font-mono outline-none"
+              />
+              <button
+                onClick={() => copy(url, "url")}
+                className="px-4 py-2 rounded-xl bg-slate-100 border border-slate-300 hover:border-slate-400 text-sm text-slate-700 hover:text-slate-900 transition-colors shrink-0"
+              >
+                {copiedUrl ? "Copied!" : "Copy"}
+              </button>
+            </div>
 
-        {/* QR */}
-        <div className="flex items-center gap-4">
-          <div className="w-32 h-32 bg-white rounded-xl flex items-center justify-center shrink-0 overflow-hidden">
-            {qrDataUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={qrDataUrl} alt={`QR code for ${url}`} className="w-full h-full" />
-            ) : (
-              <p className="text-xs text-slate-500">…</p>
-            )}
-          </div>
-          <div>
-            <p className="text-sm text-slate-900 font-medium mb-1">QR Code</p>
-            <p className="text-xs text-slate-500 mb-2">
-              Scans directly to your live agent. Print and place near your installation.
-            </p>
-            <button
-              onClick={downloadQr}
-              disabled={!qrDataUrl}
-              className="px-4 py-2 rounded-xl bg-slate-100 border border-slate-300 hover:border-slate-400 text-sm text-slate-700 hover:text-slate-900 transition-colors disabled:opacity-40"
-            >
-              Download PNG
-            </button>
-          </div>
-        </div>
+            {/* QR */}
+            <div className="flex items-center gap-4">
+              <div className="w-32 h-32 bg-white rounded-xl flex items-center justify-center shrink-0 overflow-hidden">
+                {qrDataUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={qrDataUrl} alt={`QR code for ${url}`} className="w-full h-full" />
+                ) : (
+                  <p className="text-xs text-slate-500">…</p>
+                )}
+              </div>
+              <div>
+                <p className="text-sm text-slate-900 font-medium mb-1">QR Code</p>
+                <p className="text-xs text-slate-500 mb-2">
+                  Scans directly to your live agent. Print and place near your installation.
+                </p>
+                <button
+                  onClick={downloadQr}
+                  disabled={!qrDataUrl}
+                  className="px-4 py-2 rounded-xl bg-slate-100 border border-slate-300 hover:border-slate-400 text-sm text-slate-700 hover:text-slate-900 transition-colors disabled:opacity-40"
+                >
+                  Download PNG
+                </button>
+              </div>
+            </div>
+          </>
+        ) : (
+          <p className="text-sm text-slate-500">
+            Click <strong>Save &amp; publish</strong> first, then come back here for your link and QR code.
+          </p>
+        )}
       </SectionCard>
 
       {/* Embed */}
@@ -1138,25 +1187,29 @@ function SectionShare({ scene }: { scene: Scene }) {
         </button>
       </SectionCard>
 
-      <a
-        href="/"
-        className="flex items-center justify-center gap-2 w-full py-3 rounded-xl bg-indigo-500 hover:bg-indigo-400 text-white text-sm font-medium transition-colors"
-      >
-        <svg
-          className="w-4 h-4"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth={2}
+      {url && (
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center justify-center gap-2 w-full py-3 rounded-xl bg-indigo-500 hover:bg-indigo-400 text-white text-sm font-medium transition-colors"
         >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 010 1.972l-11.54 6.347a1.125 1.125 0 01-1.667-.986V5.653z"
-          />
-        </svg>
-        Open consumer view
-      </a>
+          <svg
+            className="w-4 h-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 010 1.972l-11.54 6.347a1.125 1.125 0 01-1.667-.986V5.653z"
+            />
+          </svg>
+          Open consumer view
+        </a>
+      )}
     </div>
   );
 }
@@ -1250,25 +1303,31 @@ function isDone(id: NavSection, scene: Scene): boolean {
   return false;
 }
 
-export default function CreatorPage() {
+export default function CreatorPage({
+  agentId,
+  onBack,
+}: {
+  agentId: number;
+  onBack: () => void;
+}) {
   const [active, setActive] = useState<NavSection>("scene");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  // Always start with defaultScene so server and client render identically (no hydration mismatch).
+  // Always start blank so a new agent never shows another agent's content.
   // Load from localStorage in useEffect — client-only, runs after hydration.
-  const [scene, setScene] = useState<Scene>(defaultScene);
+  const [scene, setScene] = useState<Scene>(blankScene);
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
   // Load latest scene from DB on mount — source of truth is Postgres, not localStorage
   useEffect(() => {
-    fetch("/api/scenes/latest")
+    fetch(`/api/agents/${agentId}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
-        if (data) setScene({ ...defaultScene, ...data });
+        if (data) setScene({ ...blankScene, ...data });
       })
       .catch(() => {});
-  }, []);
+  }, [agentId]);
 
   const save = async () => {
     setSaving(true);
@@ -1335,6 +1394,14 @@ export default function CreatorPage() {
           </div>
         </div>
 
+        {/* Back to agent list */}
+        <button
+          onClick={onBack}
+          className="mx-4 mt-3 px-3 py-1.5 rounded-lg border border-slate-300 text-xs text-slate-700 hover:border-slate-400 hover:bg-slate-50 transition-colors text-left w-fit"
+        >
+          ← My agents
+        </button>
+
         {/* Scene name badge */}
         <div className="px-4 py-3 border-b border-slate-200">
           <p className="text-xs text-slate-500 mb-1">Current scene</p>
@@ -1392,8 +1459,15 @@ export default function CreatorPage() {
             {saving ? "Saving…" : "Save & publish"}
           </button>
           <a
-            href="/"
-            className="w-full py-2 rounded-xl border border-slate-300 hover:border-slate-400 text-sm text-slate-500 hover:text-slate-900 text-center transition-colors"
+            href={scene.slug ? `/${scene.slug}` : "#"}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => { if (!scene.slug) e.preventDefault(); }}
+            className={`w-full py-2 rounded-xl border text-sm text-center transition-colors ${
+              scene.slug
+                ? "border-slate-300 hover:border-slate-400 text-slate-500 hover:text-slate-900"
+                : "border-slate-200 text-slate-300 cursor-not-allowed"
+            }`}
           >
             Preview →
           </a>
