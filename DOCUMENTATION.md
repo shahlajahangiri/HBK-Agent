@@ -570,8 +570,6 @@ The migration can either be run as the PostgreSQL administrator or ownership can
 
 ---
 
----
-
 ## Project Credits
 
 AgentStage was developed by **Arezoo Hassannezhad** and **Shahla Jahangiri** as part of the **Media Infrastructures** lecture at the **Hochschule der Bildenden Künste Saar (HBKsaar)** during the **Summer Semester 2026**.
