@@ -247,6 +247,12 @@ The project explores how voice interaction, conversational AI, and video-based c
 
 ---
 
-**Developed at Hochschule der Bildenden Künste Saar (HBKsaar)**
-**Media Infrastructures — Summer Semester 2026**
-**Supervised by Prof. Dr. Michael Schmitz**
+---
+
+## Credits
+
+**Developed by:** Arezoo Hassannezhad & Shahla Jahangiri  
+**Hochschule:** Hochschule der Bildenden Künste Saar (HBKsaar)  
+**Lecture:** Media Infrastructures  
+**Semester:** Summer Semester 2026  
+**Supervised by:** Prof. Dr. Michael Schmitz
