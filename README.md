@@ -1,93 +1,158 @@
 # AgentStage
 
-AgentStage is a multi-tenant platform for building voice-driven AI exhibition guides. A creator configures a character — name, personality, knowledge, and a set of video clips — and visitors interact with it by speaking naturally, getting real-time AI responses paired with a matching video performance.
+AgentStage is a web-based platform for creating voice-driven AI guides.
 
-Each agent is independent and lives at its own URL (e.g. `/hbk-saar-guide`, `/saarland-university-guide`), so the same platform can host guides for entirely different institutions — an exhibition, a university, a church — each owned and managed by a different creator, with an admin overseeing all of them.
+The idea is simple: a creator can build an AI character by giving it a name, personality, knowledge, voice, and a set of video clips. Visitors can then talk to the character naturally using their voice. The AI responds in real time, speaks the answer back, and can play a video that matches the response.
 
-Built with Next.js, Mistral AI, PostgreSQL, and ElevenLabs.
+Each agent has its own URL, such as `/hbk-saar-guide` or `/saarland-university-guide`. This means the same platform can be used for different projects, exhibitions, universities, or other institutions without having to build a separate application for each one.
+
+AgentStage was developed as part of the **Media Infrastructures** lecture at the **Hochschule der Bildenden Künste Saar (HBKsaar)** during the **Summer Semester 2026**, under the supervision of **Prof. Dr. Michael Schmitz**.
+
+The project combines conversational AI, voice interaction, and video-based character performance into one system.
+
+---
+
+## Project Context
+
+**Hochschule:** Hochschule der Bildenden Künste Saar (HBKsaar)
+**Lecture:** Media Infrastructures
+**Semester:** Summer Semester 2026
+**Supervision:** Prof. Dr. Michael Schmitz
+
+The project started from the idea of creating a more natural way for visitors to interact with digital guides. Instead of reading information from a screen or using a traditional chatbot, visitors can simply speak to the character and have a conversation.
+
+The system was designed to be reusable. Creators can set up their own agents, provide the information and media they need, and publish each agent through its own URL.
 
 ---
 
 ## Features
 
-### Visitor experience (`/{agent-slug}`)
+### Visitor Experience (`/{agent-slug}`)
 
-- Voice conversations: press-to-talk microphone capture, sent to server-side speech-to-text (ElevenLabs Scribe), with automatic German re-transcription when the detected language looks implausible
-- Streaming AI replies (Mistral), spoken back via ElevenLabs TTS (falls back to the browser's built-in speech synthesis if that fails)
-- Video performance: the AI picks the most fitting clip for each reply from the creator's uploaded set, or falls back to the idle clip if nothing fits
-- **Barge-in**: visitors can interrupt the agent mid-answer by tapping the mic again — the in-flight response is discarded and the new question is heard immediately
-- Multilingual: replies match whatever language the visitor spoke, and voice model selection adapts per language
-- Optional "offer to show a clip" flow — the agent can ask permission before playing a specific real (e.g. student project) video, rather than assuming
-- Idle/attract mode with a static greeting before the first interaction
+* **Voice conversations** — visitors can press the microphone button, speak, and send their question to the AI.
+* **Speech-to-text** — ElevenLabs Scribe converts the visitor's speech into text.
+* **Streaming AI responses** — Mistral generates the response and starts sending it while it is being generated.
+* **Text-to-speech** — the response is spoken using ElevenLabs, with the browser's built-in speech synthesis as a fallback.
+* **Video performance** — the system chooses a suitable video clip based on the AI's response.
+* **Barge-in** — visitors can interrupt the agent while it is speaking and immediately ask another question.
+* **Multilingual conversations** — the agent responds in the language used by the visitor.
+* **Optional video suggestions** — the agent can ask the visitor if they want to see a specific video before playing it.
+* **Idle mode** — before the first interaction, the agent can show an idle video and greeting.
 
-### Creator dashboard (`/creator`)
+### Creator Dashboard (`/creator`)
 
-- Login-protected; session persists across page refreshes
-- **My Agents**: every creator sees only the agents they own — full multi-tenant isolation
-- Create, edit, and delete agents
-- Per agent: name, character name, knowledge/system prompt (typeable or `.txt` upload), idle message, custom URL, ElevenLabs voice picker, video clips (label/description/trigger/mute), display orientation
-- **Share & Deploy**: shareable link, live QR code, embeddable iframe snippet — all reflect the agent's actual saved URL
-- Preview and "Open consumer view" open the real live agent page in a new tab
+Creators can manage their own agents through a protected dashboard.
 
-### Admin panel (`/admin`)
+* Create, edit, and delete agents
+* Configure the character's name and personality
+* Add knowledge or upload a `.txt` knowledge file
+* Configure the idle message
+* Choose an ElevenLabs voice
+* Upload and manage video clips
+* Add labels, descriptions, and triggers to videos
+* Configure the display orientation
+* Set a custom URL/slug for each agent
+* Preview the agent before publishing
+* Generate a shareable link and QR code
+* Generate an embeddable iframe
+* Open the live visitor view directly
 
-- Visible only to accounts with the admin flag
-- Add new creator accounts, reset any creator's password, delete creators (blocked if they still own agents, to avoid silent data loss)
-- View every creator's agents and delete any agent, regardless of owner
-- Set which agent the bare root URL (`/`) redirects visitors to
+Each creator only has access to the agents they own.
+
+### Admin Panel (`/admin`)
+
+The admin panel is used to manage the platform.
+
+* Create creator accounts
+* Reset creator passwords
+* Delete creator accounts
+* View all agents and their owners
+* Delete agents when necessary
+* Choose which agent is shown at the root URL (`/`)
+
+Creators cannot access or modify other creators' agents.
 
 ---
 
-## Architecture
+## How It Works
+
+The basic interaction looks like this:
 
 ```text
-Visitor  ──speaks──►  /api/stt (ElevenLabs Scribe)
-                          │
-                          ▼
-                    /api/chat (Mistral, streamed) ──► loads the correct agent
-                          │                            by slug from Postgres
-                          ▼
-                    /api/select-video ──► picks the best clip for this reply
-                          │
-                          ▼
-                    /api/tts (ElevenLabs) ──► spoken back to the visitor
+Visitor
+   │
+   │ speaks
+   ▼
+/api/stt
+   │
+   │ ElevenLabs Scribe
+   ▼
+/api/chat
+   │
+   │ Mistral AI
+   │
+   │ loads agent configuration from PostgreSQL
+   ▼
+/api/select-video
+   │
+   │ finds the most suitable video
+   ▼
+/api/tts
+   │
+   │ ElevenLabs
+   ▼
+Visitor hears the response
 ```
 
-Every request that touches a specific agent (chat, video selection) is scoped by that agent's URL slug — nothing is ever inferred from "whichever agent was edited most recently."
+Each request is connected to a specific agent through its URL slug. This is important because the platform can host multiple independent agents at the same time.
+
+For example:
+
+```text
+/hbk-saar-guide
+/saarland-university-guide
+/exhibition-guide
+```
+
+Each URL loads its own character, knowledge, voice, and videos.
 
 ---
 
-## Tech stack
+## Tech Stack
 
-| Category         | Technology                                        |
-| ----------------- | -------------------------------------------------- |
-| Framework          | Next.js 16 (App Router, TypeScript)                |
-| Chat AI            | Mistral AI (streaming)                             |
-| Speech-to-text     | ElevenLabs Scribe                                  |
-| Text-to-speech     | ElevenLabs (falls back to Web Speech API)          |
-| Database           | Self-hosted PostgreSQL (`pg` pool)                 |
-| Auth               | JWT (httpOnly cookie) + bcrypt                     |
-| Styling            | Tailwind CSS                                       |
-| Video delivery     | Static files, served directly by nginx             |
-| Process manager    | pm2                                                 |
-| Deployment         | Self-hosted Ubuntu server (not Vercel — see below) |
+| Category        | Technology                         |
+| --------------- | ---------------------------------- |
+| Framework       | Next.js 16, App Router, TypeScript |
+| AI              | Mistral AI                         |
+| Speech-to-text  | ElevenLabs Scribe                  |
+| Text-to-speech  | ElevenLabs                         |
+| Database        | PostgreSQL                         |
+| Database client | `pg`                               |
+| Authentication  | JWT + bcrypt                       |
+| Styling         | Tailwind CSS                       |
+| Video delivery  | Static files + nginx               |
+| Process manager | pm2                                |
+| Server          | Self-hosted Ubuntu                 |
+| Deployment      | Self-hosted                        |
 
-**Why not Vercel:** this project stores uploaded videos on the local filesystem and connects to Postgres over a raw TCP socket — neither works on Vercel's serverless/edge environment. The project is intentionally committed to a self-hosted server.
-
-For a full breakdown of every file, API route, database table, and how they fit together, see [`DOCUMENTATION.md`](./DOCUMENTATION.md).
+For more details about the project structure, API routes, database tables, authentication, and deployment, see [`DOCUMENTATION.md`](./DOCUMENTATION.md).
 
 ---
 
-## Getting started (fresh clone → running app)
+## Getting Started
 
-### 1. Prerequisites
+### Prerequisites
 
-- Node.js 20+
-- A PostgreSQL server (13+) you can create a database on
-- API keys: [Mistral](https://console.mistral.ai/) and [ElevenLabs](https://elevenlabs.io/)
-- nginx, if deploying for real visitors (see [Production deployment](#production-deployment-self-hosted) below) — not required for local dev
+You need:
 
-### 2. Clone and install
+* Node.js 20+
+* PostgreSQL 13+
+* A Mistral API key
+* An ElevenLabs API key
+
+nginx is only needed for the production deployment.
+
+### Clone the project
 
 ```bash
 git clone https://github.com/shahlajahangiri/HBK-Agent.git
@@ -95,176 +160,93 @@ cd HBK-Agent
 npm install
 ```
 
-### 3. Create the database and schema
+### Configure the database
 
-```bash
-sudo -u postgres createdb agentstage
-sudo -u postgres psql -d agentstage -c "CREATE USER agentstage_user WITH PASSWORD 'choose_a_password';"
-sudo -u postgres psql -d agentstage -c "GRANT ALL PRIVILEGES ON DATABASE agentstage TO agentstage_user;"
-sudo -u postgres psql -d agentstage -c "ALTER TABLE IF EXISTS agent OWNER TO agentstage_user;" # no-op on a fresh DB, harmless
-```
+Create a PostgreSQL database and the required tables.
 
-Then create the schema (run as a role with CREATE privileges — `sudo -u postgres psql -d agentstage`, or as `agentstage_user` if you granted it table ownership):
+The main tables are:
 
-```sql
-CREATE TABLE users (
-  id            SERIAL PRIMARY KEY,
-  username      VARCHAR(50) UNIQUE NOT NULL,
-  password_hash TEXT NOT NULL,
-  is_admin      BOOLEAN NOT NULL DEFAULT false,
-  created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+* `users` — creator and admin accounts
+* `agent` — agent configuration and ownership
+* `videos` — videos belonging to each agent
+* `knowledge_files` — uploaded knowledge files
+* `settings` — platform-level settings
 
-CREATE TABLE agent (
-  id                SERIAL PRIMARY KEY,
-  owner_id          INTEGER NOT NULL REFERENCES users(id),
-  name              TEXT NOT NULL,
-  character_name    TEXT,
-  system_prompt     TEXT,
-  idle_message      TEXT,
-  selection_prompt  TEXT,
-  orientation       VARCHAR(20),
-  show_bot_text     BOOLEAN DEFAULT true,
-  idle_video_index  INTEGER DEFAULT 0,
-  slug              TEXT UNIQUE,
-  voice_id          TEXT,
-  voice_name        TEXT,
-  default_language  TEXT,
-  updated_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+See the database schema below for the complete structure.
 
-CREATE TABLE videos (
-  id               SERIAL PRIMARY KEY,
-  agent_id         INTEGER NOT NULL REFERENCES agent(id) ON DELETE CASCADE,
-  video_order      INTEGER,
-  label            TEXT,
-  description      TEXT,
-  file_path        TEXT NOT NULL,
-  trigger          TEXT,
-  includes_speech  BOOLEAN DEFAULT false,
-  muted            BOOLEAN DEFAULT false,
-  created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+### Environment variables
 
--- Reserved for a future "reference document" feature — not yet used by any
--- route in the current codebase, but kept so existing deployments aren't broken.
-CREATE TABLE knowledge_files (
-  id           SERIAL PRIMARY KEY,
-  agent_id     INTEGER NOT NULL REFERENCES agent(id) ON DELETE CASCADE,
-  filename     TEXT NOT NULL,
-  file_path    TEXT NOT NULL,
-  mime_type    TEXT,
-  file_size    BIGINT,
-  uploaded_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Generic key/value store. Currently used for exactly one key,
--- 'default_agent_slug' — see app/api/settings/default-agent/route.ts
-CREATE TABLE settings (
-  id    SERIAL PRIMARY KEY,
-  key   TEXT UNIQUE NOT NULL,
-  value JSONB
-);
-```
-
-### 4. Configure environment variables
+Create your local environment file:
 
 ```bash
 cp .env.example .env.local
 ```
 
-Fill in every value in `.env.local`: `MISTRAL_API_KEY`, `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID` (any valid ElevenLabs voice ID — used as the fallback voice for agents that haven't picked their own), `DB_HOST`/`DB_PORT`/`DB_USER`/`DB_PASSWORD`/`DB_NAME` (matching what you created in step 3), and `JWT_SECRET` (any long random string — generate one with `openssl rand -base64 32`).
+Then add your Mistral, ElevenLabs, PostgreSQL, and JWT configuration.
 
-### 5. Create your first (admin) account
-
-There's no public signup — the very first user has to be inserted directly. Generate a bcrypt password hash with Node (already installed as a dependency):
-
-```bash
-node -e "console.log(require('bcrypt').hashSync('your-chosen-password', 10))"
-```
-
-Copy the output (starts with `$2b$...`), then insert the admin user:
-
-```bash
-sudo -u postgres psql -d agentstage -c "INSERT INTO users (username, password_hash, is_admin) VALUES ('admin', '<paste hash here>', true);"
-```
-
-### 6. Run it
+### Run locally
 
 ```bash
 npm run dev
 ```
 
-Visit `http://localhost:3000/creator`, log in with the account from step 5, and create your first agent. Every agent needs at least one uploaded video and a saved Custom URL before its live page (`/{slug}`) will work.
+Then open:
+
+```text
+http://localhost:3000/creator
+```
+
+Log in with your creator/admin account and create your first agent.
 
 ---
 
-## Production deployment (self-hosted)
+## Production
 
-This project is built and tested for a self-hosted Ubuntu server, not Vercel (see the note under [Tech stack](#tech-stack)).
+The application runs on a self-hosted Ubuntu server.
 
-### Build and run with pm2
+Next.js is managed with **pm2**, while nginx handles the incoming requests and serves uploaded videos directly.
+
+### Build
 
 ```bash
 npm run build
+```
+
+### Start with pm2
+
+```bash
 pm2 start npm --name agentstage -- start
 pm2 save
 ```
 
-### nginx: serve uploaded videos directly (bypass Next.js)
+Uploaded videos are served through nginx from:
 
-Add this to your nginx server block, **above** the general `location /` proxy block:
-
-```nginx
-location /videos/ {
-    alias /full/path/to/HBK-Agent/public/videos/;
-}
-
-location / {
-    proxy_pass http://localhost:3000;
-    proxy_http_version 1.1;
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection 'upgrade';
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_cache_bypass $http_upgrade;
-    client_max_body_size 200M;
-}
+```text
+/videos/
 ```
 
-`client_max_body_size 200M` (or similar) is needed on the `/` block since video uploads go through the Next.js API route (`/api/upload`), not the `/videos/` alias.
-
-After editing, reload nginx:
-
-```bash
-sudo nginx -t && sudo systemctl reload nginx
-```
-
-**Common gotcha:** the nginx worker process needs execute (`o+x`) permission on *every* directory in that path, not just the final `videos` folder — `public/`, the project root, and every parent directory above it, all need to be traversable by nginx's user. If videos 404 despite the file genuinely existing on disk, check permissions with `namei -l /full/path/to/HBK-Agent/public/videos/` before anything else.
-
-**Another gotcha:** if the project folder ever gets renamed or re-cloned to a different path, the `alias` line above must be updated to match — nginx won't error, it'll just silently 404 every video, which looks exactly like a broken upload when it's actually a stale config path.
-
-### Restarting after a fresh deploy or config change
-
-If pm2 restart seems to hang or the app won't come back up, an orphaned `next-server` process is usually squatting on port 3000:
-
-```bash
-pm2 stop agentstage
-sudo fuser -k 3000/tcp
-sudo ss -ltnp 'sport = :3000'   # confirm nothing is listening before restarting
-pm2 restart agentstage
-```
+For the complete nginx configuration and troubleshooting instructions, see [`DOCUMENTATION.md`](./DOCUMENTATION.md).
 
 ---
 
-## Project structure
+## Project Structure
 
-See [`DOCUMENTATION.md`](./DOCUMENTATION.md) for a complete, file-by-file breakdown of every route, component, and database table, plus the authentication model and known limitations.
+For a detailed explanation of the project, including the individual files, API routes, database schema, authentication, and known limitations, see:
+
+[`DOCUMENTATION.md`](./DOCUMENTATION.md)
 
 ---
 
-Developed at HBK Saar, Summer Semester 2026.
+## About the Project
 
-Supervised by Dr. Michael Schmitz, Experimental Media Lab, HBK Saar.
+AgentStage was created during the **Media Infrastructures** lecture at the **Hochschule der Bildenden Künste Saar (HBKsaar)** in the **Summer Semester 2026**.
 
-Created by Shahla Jahangiri and Arezoo Hassannezhad.
+**Supervised by Prof. Dr. Michael Schmitz.**
+
+The project explores how voice interaction, conversational AI, and video-based characters can be combined to create a more interactive experience for visitors.
+
+---
+
+**Developed at Hochschule der Bildenden Künste Saar (HBKsaar)**
+**Media Infrastructures — Summer Semester 2026**
+**Supervised by Prof. Dr. Michael Schmitz**
