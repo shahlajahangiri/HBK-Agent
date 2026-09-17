@@ -570,8 +570,10 @@ The migration can either be run as the PostgreSQL administrator or ownership can
 
 ---
 
-## Final Notes
+---
 
-AgentStage is a student project developed for the **Media Infrastructures** lecture at **Hochschule der Bildenden Künste Saar (HBKsaar)** during the **Summer Semester 2026**, under the supervision of **Prof. Dr. Michael Schmitz**.
+## Project Credits
 
-The documentation is intended to make it easier for future developers or project members to understand how the application works, run it locally, deploy it, and extend it without accidentally breaking the separation between different agents.
+AgentStage was developed by **Arezoo Hassannezhad** and **Shahla Jahangiri** as part of the **Media Infrastructures** lecture at the **Hochschule der Bildenden Künste Saar (HBKsaar)** during the **Summer Semester 2026**.
+
+**Supervised by Prof. Dr. Michael Schmitz.**
