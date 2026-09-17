@@ -8,13 +8,16 @@ For installation and setup instructions, see [`README.md`](./README.md).
 
 ## Project Context
 
-AgentStage was developed as part of the **Media Infrastructures** lecture at the **Hochschule der Bildenden Künste Saar (HBKsaar)** during the **Summer Semester 2026**, under the supervision of **Prof. Dr. Michael Schmitz**.
+AgentStage was developed by **Arezoo Hassannezhad** and **Shahla Jahangiri** as part of the **Media Infrastructures** lecture at the **Hochschule der Bildenden Künste Saar (HBKsaar)** during the **Summer Semester 2026**.
 
-The project explores how conversational AI, voice interaction, and video-based characters can be combined to create interactive digital guides. The goal was not only to build a single AI guide, but to create a platform that can be used to build and manage multiple independent guides.
+**Supervised by Prof. Dr. Michael Schmitz.**
 
-**Hochschule:** Hochschule der Bildenden Künste Saar (HBKsaar)
-**Lecture:** Media Infrastructures
-**Semester:** Summer Semester 2026
+The project explores how conversational AI, voice interaction, and video-based characters can be combined to create interactive digital guides.
+
+**Hochschule:** Hochschule der Bildenden Künste Saar (HBKsaar)  
+**Lecture:** Media Infrastructures  
+**Semester:** Summer Semester 2026  
+**Developed by:** Arezoo Hassannezhad & Shahla Jahangiri  
 **Supervision:** Prof. Dr. Michael Schmitz
 
 ---
