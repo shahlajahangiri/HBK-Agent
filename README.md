@@ -263,4 +263,8 @@ See [`DOCUMENTATION.md`](./DOCUMENTATION.md) for a complete, file-by-file breakd
 
 ---
 
-Developed at HBK Saar — Summer Semester 2026.
+Developed at HBK Saar, Summer Semester 2026.
+
+Supervised by Dr. Michael Schmitz, Experimental Media Lab, HBK Saar.
+
+Created by Shahla Jahangiri and Arezoo Hassannezhad.
