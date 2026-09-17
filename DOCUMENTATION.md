@@ -6,8 +6,6 @@ For installation and setup instructions, see [`README.md`](./README.md).
 
 ---
 
----
-
 ## Project Context
 
 AgentStage was developed by **Arezoo Hassannezhad** and **Shahla Jahangiri** as part of the **Media Infrastructures** lecture at the **Hochschule der Bildenden Künste Saar (HBKsaar)** during the **Summer Semester 2026**.
