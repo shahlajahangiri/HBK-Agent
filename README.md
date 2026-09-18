@@ -14,10 +14,6 @@ The project combines conversational AI, voice interaction, and video-based chara
 
 ## Project Context
 
-**Hochschule:** Hochschule der Bildenden Künste Saar (HBKsaar)
-**Lecture:** Media Infrastructures
-**Semester:** Summer Semester 2026
-**Supervision:** Prof. Dr. Michael Schmitz
 
 The project started from the idea of creating a more natural way for visitors to interact with digital guides. Instead of reading information from a screen or using a traditional chatbot, visitors can simply speak to the character and have a conversation.
 
@@ -247,12 +243,9 @@ The project explores how voice interaction, conversational AI, and video-based c
 
 ---
 
----
 
-## Credits
+Developed at HBK Saar, Summer Semester 2026.
 
-**Developed by:** Arezoo Hassannezhad & Shahla Jahangiri  
-**Hochschule:** Hochschule der Bildenden Künste Saar (HBKsaar)  
-**Lecture:** Media Infrastructures  
-**Semester:** Summer Semester 2026  
-**Supervised by:** Prof. Dr. Michael Schmitz
+Supervised by Dr. Michael Schmitz, Experimental Media Lab, HBK Saar.
+
+Created by Shahla Jahangiri and Arezoo Hassannezhad.
